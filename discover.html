@@ -45,6 +45,9 @@ header .wrap{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
 .lede .consent{margin-top:16px;font-size:12.5px;line-height:1.6;color:var(--l3);
   border-left:2px solid var(--orange);padding-left:13px;max-width:64ch}
 .lede .consent b{color:var(--orange)}
+.lede .mock{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10px;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--l3);
+  border:1px solid var(--line);border-radius:99px;padding:5px 12px;margin-bottom:16px}
 
 .grid{display:grid;gap:14px;padding-bottom:70px;
   grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}
@@ -70,6 +73,11 @@ header .wrap{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
 .card .prov{margin-top:7px;font-family:'IBM Plex Mono',monospace;font-size:9.5px;
   letter-spacing:.1em;color:var(--l3)}
 .card .prov b{color:var(--green);font-weight:500}
+.card.invite{border-style:dashed;border-color:rgba(237,241,245,.22);background:transparent;
+  display:flex;align-items:center}
+.card.invite:hover{border-color:rgba(81,236,67,.42)}
+.card.invite .it{font-size:15px;font-weight:700}
+.card.invite .il{margin-top:7px;font-size:12.5px;color:var(--l2);line-height:1.62}
 
 #empty{padding:60px 0;color:var(--l3);font-size:14px}
 footer{border-top:1px solid var(--line);padding:24px 0;font-family:'IBM Plex Mono',monospace;
@@ -93,13 +101,17 @@ footer a:hover{color:var(--green)}
 </div></header>
 
 <div class="wrap lede">
+  <span class="mock">Design preview, fictional shelves</span>
   <h1>Shelves people chose to show.</h1>
   <p>Every shelf here was listed on purpose. Sorted by what is actually in the
      jars, not by who posts most.</p>
   <p class="consent"><b>Listing is a separate switch from sharing.</b> A shelf
      can be shareable by link and still never appear on this page. Nothing lands
      here because somebody sent a friend a link, and turning listing off removes
-     it immediately.</p>
+     it immediately. Prototype jars can never appear on this page: the
+     database projection that feeds it excludes them, so there is no setting
+     to get wrong. Wish lists are not listed here either, they stay
+     private.</p>
 </div>
 
 <div class="wrap"><div class="grid" id="grid"></div></div>
@@ -240,7 +252,12 @@ function draw() {
         <div class="prov"><b>${s.inhand} captured in session</b> · ${s.n - s.inhand} uploaded</div>
       </div>
     </a>`;
-  }).join('');
+  }).join('') + `<a class="card invite" href="./home.html">
+    <div class="meta">
+      <div class="it">Your shelf could sit here.</div>
+      <div class="il">Listing is off until you turn it on. Nothing appears here by accident.</div>
+    </div>
+  </a>`;
 }
 
 for (const b of document.querySelectorAll('#filters .chip')) {

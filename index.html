@@ -235,6 +235,28 @@ body[data-sponsor] #sponsor.on{opacity:1}
   color:#06210A;border:0;padding:14px 26px;border-radius:2px;font:inherit;
   font-weight:700;font-size:14px;cursor:pointer}
 .cta .fine{margin-top:18px;font-size:12px;color:var(--l3)}
+/* waitlist confirmation: there is no emailed receipt, so the page is the
+   receipt and it dresses like one */
+.joined{margin-top:34px}
+.joined .kick{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.28em;
+  text-transform:uppercase;color:var(--green)}
+.joined h3{margin-top:14px;font-size:clamp(28px,4.8vw,44px);font-weight:800;letter-spacing:-.03em}
+.joined .addr{margin-top:10px;font-size:14px;color:var(--l2);overflow-wrap:anywhere}
+.stub{margin:28px auto 0;max-width:440px;text-align:left;background:var(--pane);
+  border:1px solid var(--green);border-radius:4px;box-shadow:0 0 24px var(--greenGlow);
+  padding:16px 18px;font-family:'IBM Plex Mono',monospace}
+.stub .shead{display:flex;justify-content:space-between;align-items:baseline;gap:14px;
+  padding-bottom:10px;border-bottom:1px solid var(--line)}
+.stub .shead b{font-size:12px;letter-spacing:.24em;text-transform:uppercase;
+  color:var(--green);font-weight:700}
+.stub .shead span{font-size:10px;letter-spacing:.24em;text-transform:uppercase;
+  color:var(--orange)}
+.stub .srow{display:flex;justify-content:space-between;align-items:baseline;gap:14px;
+  padding:8px 0;border-bottom:1px solid rgba(237,241,245,.08);font-size:11px}
+.stub .srow:last-child{border-bottom:0;padding-bottom:2px}
+.stub .srow span{letter-spacing:.2em;text-transform:uppercase;color:var(--l3);flex:0 0 auto}
+.stub .srow b{font-weight:500;color:var(--l1);letter-spacing:.05em;min-width:0;
+  text-align:right;overflow-wrap:anywhere}
 footer{border-top:1px solid var(--line);padding:26px clamp(20px,5vw,48px);display:flex;
   justify-content:space-between;gap:16px;flex-wrap:wrap;font-family:'IBM Plex Mono',monospace;
   font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--l3)}
@@ -916,7 +938,8 @@ if (sponsorName) $('sponsorName').textContent = sponsorName;
 
 /* The waitlist forwards straight into hello@meltshelf.com - no database, no
    dashboard, no third-party list. The submit is a native POST (see the form
-   markup for why); this handler only validates and sets the button state. */
+   markup for why); this handler validates, stores the address for the return
+   leg, and sets the button state. */
 $('waitlist').addEventListener('submit', (e) => {
   const v = $('email').value.trim();
   if (!/.+@.+\..+/.test(v)) {
@@ -924,17 +947,80 @@ $('waitlist').addEventListener('submit', (e) => {
     $('fine').textContent = 'That does not look like an email address.';
     return;
   }
+  /* The return leg reads this back to greet them by address. sessionStorage,
+     not localStorage: per tab is right, a shared machine must not greet the
+     next person with someone else's signup. */
+  try { sessionStorage.setItem('ms-joined-email', v); } catch {}
   $('joinBtn').disabled = true;
   $('joinBtn').textContent = 'Joining…';
 });
 
-// the return leg of the native POST
-if (new URLSearchParams(location.search).get('joined')) {
-  $('waitlist').hidden = true;
-  $('fine').textContent = 'You’re in. One email when it opens, nothing else, ever.';
+/* The return leg of the native POST. There is no emailed confirmation, on
+   purpose (see the form markup), so this page is the receipt and it has to
+   carry that weight. Either signal shows the joined state: the ?joined=1
+   bounce, or the address this tab stored on submit, so a refresh after the
+   redirect does not dump them back onto the form. */
+function shortCode(email) {
+  if (!email) return 'MS-0000';
+  let h = 0x811C9DC5;                                  // FNV-1a, 32 bit
+  for (let i = 0; i < email.length; i++) {
+    h ^= email.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return 'MS-' + ((h >>> 16) ^ (h & 0xFFFF)).toString(16).toUpperCase().padStart(4, '0');
+}
+
+/* Celebrate in the shelf itself: full rainbow trim, then ease back to
+   whatever was set before. Purely cosmetic, so reduced motion skips it. */
+function flareShelf() {
+  if (reduced) return;
+  const saved = { mode: TRIM.mode, userGlow: TRIM.userGlow };
+  TRIM.mode = 'rainbow';
+  TRIM.userGlow = 1.0;
+  paintTrim();
+  const t0 = performance.now(), FLARE_MS = 4000;
+  const step = (now) => {
+    const t = Math.min(1, (now - t0) / FLARE_MS);
+    const e = 1 - Math.pow(1 - t, 3);                  // ease out, settles gently
+    TRIM.userGlow = 1.0 + (saved.userGlow - 1.0) * e;
+    if (t >= 1) { TRIM.mode = saved.mode; TRIM.userGlow = saved.userGlow; }
+    paintTrim();
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+const joinedNow = new URLSearchParams(location.search).get('joined');
+let joinedStored = null;
+try { joinedStored = sessionStorage.getItem('ms-joined-email'); } catch {}
+if (joinedNow || joinedStored) {
+  const joinedEmail = joinedStored ? joinedStored.trim() : '';
+  const form = $('waitlist');
+  form.hidden = true;
+  $('fine').hidden = true;                             // the card carries the closing line
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const addr = joinedEmail ? esc(joinedEmail) : '';
+  const joinedDate = new Date().toLocaleDateString(undefined,
+    { year: 'numeric', month: 'short', day: 'numeric' });
+  const card = document.createElement('div');
+  card.className = 'joined';
+  // No queue position, ever: we do not know one and will not fake one.
+  card.innerHTML =
+    '<p class="kick">Early access, confirmed</p>' +
+    '<h3>You’re in.</h3>' +
+    (addr ? '<p class="addr">' + addr + '</p>' : '') +
+    '<div class="stub">' +
+      '<div class="shead"><b>Meltshelf</b><span>Early access</span></div>' +
+      (addr ? '<div class="srow"><span>Member</span><b>' + addr + '</b></div>' : '') +
+      '<div class="srow"><span>Joined</span><b>' + esc(joinedDate) + '</b></div>' +
+      '<div class="srow"><span>Code</span><b>' + shortCode(joinedEmail) + '</b></div>' +
+    '</div>' +
+    '<p class="fine">One email when it opens, nothing else, ever.</p>';
+  form.parentElement.insertBefore(card, form.nextSibling);
   history.replaceState(null, '', location.pathname);   // refresh must not re-claim it
   // the CTA lives at the bottom of a very long page; bring the confirmation to them
-  setTimeout(() => $('fine').scrollIntoView({ block: 'center' }), 400);
+  setTimeout(() => { card.scrollIntoView({ block: 'center' }); flareShelf(); }, 400);
 }
 
 await build();
@@ -942,7 +1028,7 @@ if (reduced) { apply(0.9); renderer.render(scene, camera); }
 else { apply(0); frame(); }
 
 window.__home = { scene, camera, jars, apply, sample, KEYS, renderer, ROSTER,
-                  TRIM, SMOKE, setMode, paintTrim, trimColourAt };
+                  TRIM, SMOKE, setMode, paintTrim, trimColourAt, flareShelf };
 </script>
 </body>
 </html>
