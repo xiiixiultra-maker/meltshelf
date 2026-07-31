@@ -464,17 +464,17 @@ footer a:hover{color:var(--green)}
   </section>
   <section class="wrap cta">
     <h2>Start your shelf.</h2>
-    <!-- Native POST, not fetch. The relay's AJAX endpoint accepts submissions
-         but silently drops the confirmation email to the signer - proven with
-         a fresh address. The documented HTML flow sends it, and _next bounces
-         straight back here with ?joined=1 so the page still owns the moment. -->
+    <!-- Native POST to the relay; _next bounces straight back with ?joined=1
+         and the page confirms. There is deliberately NO emailed confirmation:
+         the relay's autoresponse feature does not deliver on either of its
+         endpoints (tested with three addresses, spam included), and a promise
+         the wire cannot keep is worse than none. The page states the outcome
+         instead, which is the one channel we fully control. -->
     <form id="waitlist" action="https://formsubmit.co/hello@meltshelf.com" method="POST" novalidate>
       <input type="email" id="email" name="email" placeholder="you@wherever" autocomplete="email">
       <input type="hidden" name="_subject" value="Meltshelf early access signup">
       <input type="hidden" name="_template" value="table">
       <input type="hidden" name="_captcha" value="false">
-      <input type="hidden" name="_autoresponse"
-             value="You are on the Meltshelf early access list. One email when it opens, nothing else, ever. If this was not you, ignore this and nothing more will come.">
       <input type="hidden" name="_next" value="https://meltshelf.com/?joined=1">
       <!-- honeypot: bots fill every field; a human never sees this one -->
       <input type="text" id="hp" name="_honey" tabindex="-1" autocomplete="off" aria-hidden="true"
@@ -931,7 +931,7 @@ $('waitlist').addEventListener('submit', (e) => {
 // the return leg of the native POST
 if (new URLSearchParams(location.search).get('joined')) {
   $('waitlist').hidden = true;
-  $('fine').textContent = 'You’re in. A confirmation is on its way to your inbox.';
+  $('fine').textContent = 'You’re in. One email when it opens, nothing else, ever.';
   history.replaceState(null, '', location.pathname);   // refresh must not re-claim it
   // the CTA lives at the bottom of a very long page; bring the confirmation to them
   setTimeout(() => $('fine').scrollIntoView({ block: 'center' }), 400);
