@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meltshelf — every jar you have had, on one shelf</title>
+<meta name="description" content="Photograph a jar and it becomes a jar you can turn, open and show. Your whole rotation on one shelf, and a link you can send. Private by default.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#08090B;--pane:#0F1114;
+  --green:#51EC43;--greenDim:#2C9A24;--greenGlow:rgba(81,236,67,.18);
+  --orange:#FF7A18;--orangeDim:#B4500C;
+  --silver:#EDF1F5;
+  --l1:var(--silver);--l2:rgba(237,241,245,.62);--l3:rgba(237,241,245,.34);
+  --line:rgba(237,241,245,.12);
+  --ease:cubic-bezier(.66,0,.01,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+::selection{background:var(--green);color:#06210A}
+body{background:var(--bg);color:var(--l1);font-family:'Archivo',system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden}
+[hidden]{display:none!important}
+
+/* one canvas, pinned, for the whole ride */
+/* The canvas is FIXED, not sticky, so it does not end when the ride does. The
+   shelf carries on behind the copy for the rest of the page instead of freezing
+   at the handoff. */
+#scroller{position:relative;height:760vh}
+#stage{position:fixed;inset:0;z-index:0}
+#stage canvas{display:block;width:100%;height:100%}
+
+#loader{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:var(--bg);
+  transition:opacity .7s var(--ease);font-family:'IBM Plex Mono',monospace;font-size:11px;
+  letter-spacing:.28em;text-transform:uppercase;color:var(--l3)}
+#loader.gone{opacity:0;pointer-events:none}
+
+.panel{position:fixed;z-index:5;pointer-events:none;opacity:0;transform:translateY(18px);
+  transition:opacity .5s var(--ease),transform .5s var(--ease);
+  max-width:min(420px,calc(100vw - 48px))}
+/* White type on a chrome jar loses every time. Each panel carries its own soft
+   scrim, sized to the text rather than to the viewport, so the jar still reads
+   around it. */
+.panel::before{content:'';position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%);width:150%;height:190%;z-index:-1;
+  background:radial-gradient(ellipse at center,
+    rgba(8,9,11,.92) 0%,rgba(8,9,11,.78) 45%,rgba(8,9,11,0) 74%)}
+.panel.on{opacity:1;transform:none}
+.panel.left{left:clamp(20px,5vw,72px);top:50%;margin-top:-90px}
+.panel.right{right:clamp(20px,5vw,72px);top:50%;margin-top:-90px;text-align:right}
+.panel .kick{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.28em;
+  text-transform:uppercase;color:var(--green);display:block;margin-bottom:14px}
+.panel.alt .kick{color:var(--orange)}
+.panel h2{font-size:clamp(26px,4.2vw,44px);line-height:1.05;font-weight:800;letter-spacing:-.02em}
+.panel p{margin-top:14px;font-size:15px;line-height:1.62;color:var(--l2)}
+
+#hero{position:fixed;z-index:6;left:50%;top:34%;transform:translate(-50%,-50%);
+  text-align:center;pointer-events:none;width:min(780px,calc(100vw - 40px));
+  transition:opacity .5s var(--ease),transform .6s var(--ease)}
+/* The jar is chrome and the headline is white. Without a scrim the two fight
+   wherever they overlap and both lose. */
+#hero::before{content:'';position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%);width:150%;height:230%;z-index:-1;
+  background:radial-gradient(ellipse at center,
+    rgba(8,9,11,.88) 0%,rgba(8,9,11,.72) 42%,rgba(8,9,11,0) 72%)}
+#hero .mark{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.42em;
+  text-transform:uppercase;color:var(--l3)}
+#hero h1{font-size:clamp(38px,7.6vw,104px);line-height:.94;font-weight:800;
+  letter-spacing:-.035em;margin:16px 0 0}
+#hero h1 em{font-style:normal;
+  background:linear-gradient(96deg,var(--green) 0%,var(--green) 42%,var(--orange) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+#hero .sub{margin-top:18px;font-size:clamp(14px,1.7vw,17px);color:var(--l2)}
+#hero.hidden{opacity:0;transform:translate(-50%,-72%)}
+
+#cue{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:6;
+  font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.26em;
+  text-transform:uppercase;color:var(--l3);pointer-events:none;transition:opacity .4s var(--ease)}
+#cue .bar{display:block;width:1px;height:30px;margin:10px auto 0;
+  background:linear-gradient(var(--l3),transparent)}
+#cue.hidden{opacity:0}
+
+/* THE SPONSOR SLOT.
+   The hero jar is the most valuable pixel on the site: it is the first thing
+   anyone sees and it is on screen for the whole opening act. That makes it
+   sellable inventory for a launch partner.
+   Hidden by default. There is no deal yet, and a credit line for a sponsor who
+   has not signed is a lie in the markup. Set data-sponsor on <body> to enable. */
+#sponsor{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:6;
+  text-align:center;pointer-events:none;opacity:0;transition:opacity .6s var(--ease);
+  font-family:'IBM Plex Mono',monospace}
+#sponsor .lab{font-size:9px;letter-spacing:.34em;text-transform:uppercase;color:var(--l3)}
+#sponsor .who{font-size:13px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--silver);margin-top:6px}
+body[data-sponsor] #sponsor.on{opacity:1}
+
+/* shelf controls, revealed with the shelf */
+#fx{position:fixed;left:24px;bottom:24px;z-index:7;width:290px;background:var(--pane);
+  border:1px solid var(--line);border-radius:5px;padding:12px 13px;
+  opacity:0;transform:translateY(10px);pointer-events:none;
+  transition:opacity .5s var(--ease),transform .5s var(--ease)}
+#fx.on{opacity:1;transform:none;pointer-events:auto}
+.fx-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.fx-head b{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--green);font-weight:500}
+.fx-head em{font-style:normal;font-family:'IBM Plex Mono',monospace;font-size:9px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--orange)}
+.fx-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.fx-row label{flex:0 0 48px;font-size:11px;color:var(--l2)}
+.fx-row input[type=range]{flex:1;accent-color:var(--green);min-width:0}
+.fx-row input[type=color]{width:28px;height:22px;padding:0;border:1px solid var(--line);
+  border-radius:3px;background:none;cursor:pointer}
+.seg{display:flex;flex:1;gap:3px;min-width:0}
+.seg button{flex:1;background:rgba(237,241,245,.05);border:1px solid var(--line);
+  color:var(--l3);border-radius:3px;padding:5px 2px;font:inherit;font-size:10px;cursor:pointer}
+.seg button.on{background:var(--greenGlow);border-color:var(--green);color:var(--green)}
+.tog{background:rgba(237,241,245,.05);border:1px solid var(--line);color:var(--l2);
+  border-radius:3px;padding:5px 10px;font:inherit;font-size:11px;cursor:pointer}
+.tog.on{background:var(--greenGlow);border-color:var(--green);color:var(--green)}
+@media (max-width:820px){#fx{display:none}}
+
+#rail{position:fixed;right:0;top:0;width:2px;height:100vh;z-index:7;background:var(--line)}
+#railFill{width:100%;height:0;background:linear-gradient(var(--green),var(--orange))}
+
+/* bay captions, projected from the 3D positions once the shelf is revealed */
+.bay{position:fixed;z-index:5;transform:translate(-50%,0);text-align:center;pointer-events:none;
+  font-family:'IBM Plex Mono',monospace;letter-spacing:.24em;text-transform:uppercase;
+  opacity:0;transition:opacity .5s var(--ease)}
+.bay b{display:block;font-size:11px;font-weight:500}
+.bay span{display:block;font-size:9px;color:var(--l3);margin-top:4px}
+.bay.rot b{color:var(--green)}
+.bay.wish b{color:var(--silver)}
+.bay.proto b{color:var(--orange)}
+
+.sec-label{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.28em;
+  text-transform:uppercase;color:var(--orange);margin-bottom:22px}
+.sec-label b{color:var(--green);font-weight:500}
+
+/* the three capture steps */
+.steps{display:grid;gap:2px;margin-top:clamp(38px,5vw,64px);
+  grid-template-columns:repeat(auto-fit,minmax(230px,1fr));background:var(--line)}
+.step{background:var(--bg);padding:clamp(24px,3vw,34px)}
+.step .n{font-family:'IBM Plex Mono',monospace;font-size:26px;font-weight:500;
+  color:var(--green);display:block;line-height:1;margin-bottom:16px}
+.step h3{font-size:15px;font-weight:600}
+.step p{margin-top:9px;font-size:14px;line-height:1.66;color:var(--l2)}
+
+/* provenance tiers */
+.tiers{margin-top:clamp(38px,5vw,60px);border-top:1px solid var(--line);padding-top:28px}
+.tier{display:flex;gap:16px;align-items:flex-start;padding:15px 0;
+  border-bottom:1px solid rgba(237,241,245,.06)}
+.tier .b{flex:0 0 auto}
+.tier .t{flex:1;min-width:0}
+.tier .t b{display:block;font-size:14px;font-weight:600}
+.tier .t p{font-size:13px;line-height:1.6;color:var(--l2);margin-top:3px}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:3px;
+  font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.16em;
+  text-transform:uppercase;border:1px solid;white-space:nowrap}
+.pill i{width:5px;height:5px;border-radius:50%;background:currentColor}
+.pill.hand{color:var(--green);border-color:var(--green);background:var(--greenGlow)}
+.pill.up{color:var(--orange);border-color:rgba(255,122,24,.5);background:rgba(255,122,24,.08)}
+.pill.dec{color:var(--l3);border-color:var(--line)}
+.rule{margin-top:26px;font-size:15px;line-height:1.6;border-left:2px solid var(--green);
+  padding-left:16px;color:var(--l1)}
+.rule b{color:var(--green)}
+
+/* the three bays */
+.bays{display:grid;gap:2px;margin-top:clamp(34px,4.5vw,56px);
+  grid-template-columns:repeat(auto-fit,minmax(250px,1fr));background:var(--line)}
+.bayc{background:var(--bg);padding:clamp(24px,3vw,34px);display:flex;flex-direction:column}
+.bayc .top{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.bayc h3{font-size:17px;font-weight:700;letter-spacing:-.01em}
+.bayc .free{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--green)}
+.bayc .paid{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--orange)}
+.bayc p{font-size:13.5px;line-height:1.66;color:var(--l2)}
+.bayc p + p{margin-top:10px}
+.bayc .tell{margin-top:auto;padding-top:16px;font-size:12px;line-height:1.55;color:var(--l3);
+  border-top:1px solid rgba(237,241,245,.07)}
+.dotline{display:inline-flex;align-items:center;gap:7px}
+.dotline i{width:7px;height:7px;border-radius:50%;display:inline-block}
+.dotline.g i{background:var(--green);box-shadow:0 0 9px var(--green)}
+.dotline.w i{background:var(--silver);box-shadow:0 0 12px rgba(237,241,245,.75)}
+.dotline.o i{background:var(--orange);box-shadow:0 0 9px var(--orange)}
+
+/* the plans table */
+.plans{margin-top:clamp(38px,5vw,60px);width:100%;border-collapse:collapse}
+.plans th,.plans td{text-align:left;padding:13px 10px;border-bottom:1px solid rgba(237,241,245,.08);
+  font-size:14px}
+.plans thead th{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--l3);font-weight:500;border-bottom:1px solid var(--line)}
+.plans thead th:nth-child(3){color:var(--green)}
+.plans td:nth-child(2),.plans td:nth-child(3),
+.plans th:nth-child(2),.plans th:nth-child(3){width:22%;text-align:center}
+.plans td:first-child{color:var(--l2)}
+.plans .yes{color:var(--green);font-weight:600}
+.plans .no{color:var(--l3)}
+.plans .hi{color:var(--silver);font-weight:600}
+.plans tr.mark td{background:rgba(81,236,67,.05)}
+.plans tr.mark td:first-child{color:var(--l1);font-weight:600}
+@media (max-width:640px){
+  .plans th,.plans td{padding:11px 6px;font-size:13px}
+  .tier{flex-direction:column;gap:9px}
+}
+
+/* Nearly opaque, not opaque. The shelf stays faintly alive behind the copy,
+   and 0.93 is the point where that reads as depth rather than as noise fighting
+   the text. */
+#after{position:relative;z-index:8;border-top:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(8,9,11,.42) 0,rgba(8,9,11,.965) 380px,rgba(8,9,11,.975) 100%)}
+.wrap{max-width:1040px;margin:0 auto;padding:clamp(64px,9vw,130px) clamp(20px,5vw,48px)}
+.lede{font-size:clamp(24px,3.4vw,38px);line-height:1.22;font-weight:600;
+  letter-spacing:-.02em;max-width:22ch}
+.lede span{color:var(--l3)}
+.grid{display:grid;gap:2px;margin-top:clamp(44px,6vw,76px);
+  grid-template-columns:repeat(auto-fit,minmax(250px,1fr));background:var(--line)}
+.cell{background:var(--bg);padding:clamp(26px,3.4vw,40px);position:relative}
+.cell h3{font-size:15px;font-weight:600}
+.cell .n{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.24em;
+  color:var(--orange);display:block;margin-bottom:16px}
+.cell p{margin-top:10px;font-size:14px;line-height:1.66;color:var(--l2)}
+.cell::after{content:'';position:absolute;left:0;bottom:0;height:2px;width:0;
+  background:linear-gradient(90deg,var(--green),var(--orange));transition:width .5s var(--ease)}
+.cell:hover::after{width:100%}
+.cta{border-top:1px solid var(--line);text-align:center}
+.cta h2{font-size:clamp(30px,5.4vw,58px);font-weight:800;letter-spacing:-.03em}
+.cta form{margin-top:30px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.cta input{background:transparent;border:1px solid var(--line);color:var(--l1);
+  padding:14px 18px;border-radius:2px;font:inherit;font-size:14px;width:min(330px,100%)}
+.cta input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px var(--greenGlow)}
+.cta button{background:linear-gradient(96deg,var(--green),#8BFF52 55%,var(--orange));
+  color:#06210A;border:0;padding:14px 26px;border-radius:2px;font:inherit;
+  font-weight:700;font-size:14px;cursor:pointer}
+.cta .fine{margin-top:18px;font-size:12px;color:var(--l3)}
+footer{border-top:1px solid var(--line);padding:26px clamp(20px,5vw,48px);display:flex;
+  justify-content:space-between;gap:16px;flex-wrap:wrap;font-family:'IBM Plex Mono',monospace;
+  font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--l3)}
+footer a{color:var(--l3);text-decoration:none}
+footer a:hover{color:var(--green)}
+
+@media (max-width:820px){
+  .panel.left,.panel.right{left:20px;right:20px;text-align:left;max-width:none;
+    top:auto;bottom:96px;margin-top:0}
+}
+@media (prefers-reduced-motion:reduce){
+  #scroller{height:auto}#stage{position:relative}
+  .panel{position:relative;opacity:1;transform:none;left:auto;right:auto;top:auto;
+    bottom:auto;margin:0 auto 40px;text-align:left}
+}
+</style>
+</head>
+<body>
+
+<div id="loader"><span>Building the jar</span></div>
+
+<div id="scroller"><div id="stage"></div></div>
+
+<div id="hero">
+  <span class="mark">Meltshelf</span>
+  <h1>Every jar you've had.<br><em>On one shelf.</em></h1>
+  <p class="sub">Photograph it, and it becomes a jar you can turn, open and show.</p>
+</div>
+
+<div class="panel left" data-at="0.20">
+  <span class="kick">01 / Shoot it</span>
+  <h2>A photo is the<br>whole input.</h2>
+  <p>Point your camera at the jar. The colour comes straight off the pixels,
+     read in your browser. No studio, no lightbox, no fiddling with swatches.</p>
+</div>
+
+<div class="panel right alt" data-at="0.42">
+  <span class="kick">02 / It becomes a jar</span>
+  <h2>Not a photo<br>of a jar.</h2>
+  <p>Turn it. Unscrew it. Look inside. The cap is a real screw and cannot lift
+     without turning, and what is in there is your colour, not a stock render.</p>
+</div>
+
+<div class="panel left" data-at="0.66">
+  <span class="kick">03 / The shelf fills up</span>
+  <h2>Everything you've<br>had, together.</h2>
+  <p>Ice water, dry sift, cold cure, rosin, temple balls. All of it on one shelf
+     you can walk around, for the first time.</p>
+</div>
+
+<div class="panel right alt" data-at="0.90">
+  <span class="kick">04 / Send it</span>
+  <h2>A link.<br>Not a screenshot.</h2>
+  <p>People open your shelf and turn the jars themselves. That lands differently
+     to a photo dropped in a group chat.</p>
+</div>
+
+<div id="sponsor">
+  <span class="lab">Launch partner</span>
+  <span class="who" id="sponsorName">Your brand here</span>
+</div>
+
+<div id="fx">
+  <div class="fx-head"><b>Shelf trim</b><em>Premium</em></div>
+  <div class="fx-row">
+    <label>Mode</label>
+    <div class="seg" id="trimSeg">
+      <button data-mode="off">Off</button>
+      <button data-mode="solid">Solid</button>
+      <button data-mode="gradient">Grad</button>
+      <button data-mode="rainbow" class="on">Rainbow</button>
+    </div>
+  </div>
+  <div class="fx-row" id="rowSolid" hidden>
+    <label>Colour</label><input type="color" id="cSolid" value="#51EC43">
+  </div>
+  <div class="fx-row" id="rowGrad" hidden>
+    <label>From/to</label>
+    <input type="color" id="cA" value="#51EC43"><input type="color" id="cB" value="#FF7A18">
+  </div>
+  <div class="fx-row">
+    <label>Smoke</label>
+    <button id="smokeBtn" class="tog on">On</button>
+    <input type="range" id="smokeAmt" min="0" max="1" step="0.02" value="0.6">
+  </div>
+</div>
+
+<div id="cue">Scroll to open<span class="bar"></span></div>
+<div id="rail"><div id="railFill"></div></div>
+
+<main id="after">
+  <section class="wrap">
+    <p class="sec-label"><b>01</b> &nbsp;/&nbsp; Getting a jar in</p>
+    <p class="lede">Three steps, one screen.
+      <span>Then it is on the shelf and you never touch it again.</span></p>
+
+    <div class="steps">
+      <div class="step"><span class="n">1</span>
+        <h3>Frame it in the ring</h3>
+        <p>A ring shows you where to put the jar mouth. That is not decoration:
+           holding everyone to the same framing is what makes two people's
+           colours comparable instead of two people's lighting.</p></div>
+      <div class="step"><span class="n">2</span>
+        <h3>The colour is read on your device</h3>
+        <p>Pixels inside the ring get sorted by lightness and the midtone is
+           taken. Specular highlights are thrown away, because a highlight is
+           the colour of your kitchen light, not of your hash.</p></div>
+      <div class="step"><span class="n">3</span>
+        <h3>Fill in what you know</h3>
+        <p>Strain, washer, micron, wash, cure, melt. Type what you know and
+           skip what you do not. Nothing here is required to get a jar.</p></div>
+    </div>
+
+    <div class="tiers">
+      <p class="sec-label" style="margin-bottom:16px">How it got here changes what it says</p>
+
+      <div class="tier">
+        <div class="b"><span class="pill hand"><i></i>Captured in session</span></div>
+        <div class="t"><b>Shot live, through the site</b>
+          <p>The camera stream, in an open session, with no stored file in
+             between. The strongest claim available, and the one worth having.</p></div>
+      </div>
+      <div class="tier">
+        <div class="b"><span class="pill up"><i></i>Uploaded</span></div>
+        <div class="t"><b>Chosen from your camera roll</b>
+          <p>A photo exists and it might be anyone's. Perfectly fine for logging
+             what you have. It just does not claim more than it can.</p></div>
+      </div>
+      <div class="tier">
+        <div class="b"><span class="pill dec"><i></i>Declared</span></div>
+        <div class="t"><b>No photo at all</b>
+          <p>Typed from memory. Still a jar, still yours, still on the shelf. An
+             assertion, and it says so.</p></div>
+      </div>
+
+      <p class="rule"><b>Every tier is open to every account, free included.</b>
+        Shooting a jar in your hand outranks a paying member's screenshot, and it
+        always will. That only means something if it cannot be bought.</p>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <p class="sec-label"><b>02</b> &nbsp;/&nbsp; What premium adds</p>
+    <p class="lede">Payment buys capability.
+      <span>It never buys standing.</span></p>
+
+    <div class="bays">
+      <div class="bayc">
+        <div class="top"><span class="dotline g"><i></i></span><h3>Current rotation</h3></div>
+        <span class="free">Free</span>
+        <p>What you actually have, right now. This is the shelf people mean when
+           they ask what you are on.</p>
+        <p>Free accounts log unlimited jars and every one of them can hold the
+           strongest provenance badge there is.</p>
+        <p class="tell">Renders normally. Carries whatever badge it earned.</p>
+      </div>
+
+      <div class="bayc">
+        <div class="top"><span class="dotline w"><i></i></span><h3>Wish list</h3></div>
+        <span class="paid">Premium</span>
+        <p>Jars you do not have. The one you keep hearing about, the drop you
+           missed, the strain you want somebody to wash for you.</p>
+        <p>It is a want list you can send. Instead of describing what you are
+           chasing, you hand over a shelf and let people look at it. Useful the
+           next time a friend asks what to pick up, and useful pointed at a
+           seller.</p>
+        <p class="tell">Glows from the inside, so nobody can mistake it for
+           something you own. No provenance badge, because there is nothing to
+           attest yet.</p>
+      </div>
+
+      <div class="bayc">
+        <div class="top"><span class="dotline o"><i></i></span><h3>Prototype</h3></div>
+        <span class="paid">Premium</span>
+        <p>Packaging that does not exist yet. For designers mocking up a label
+           and brands reviewing one before it goes to print.</p>
+        <p>Quarantined at the database level, not in the interface: excluded
+           from public browse and from every count, so an unreleased jar cannot
+           surface on a stranger's shelf.</p>
+        <p class="tell">Wears an orange band on the jar itself, which survives a
+           screenshot. No badge, because nobody ever owned it.</p>
+      </div>
+    </div>
+
+    <table class="plans">
+      <thead><tr><th></th><th>Free</th><th>Premium</th></tr></thead>
+      <tbody>
+        <tr class="mark"><td>Provenance badges</td><td class="yes">Full</td><td class="yes">Full</td></tr>
+        <tr><td>Current rotation shelf</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+        <tr><td>Jars logged</td><td>Unlimited</td><td>Unlimited</td></tr>
+        <tr><td>Jars on the 3D shelf</td><td>Your rotation</td><td class="hi">Rotation and archive</td></tr>
+        <tr><td>Wish list bay</td><td class="no">No</td><td class="yes">Yes</td></tr>
+        <tr><td>Prototype bay</td><td class="no">No</td><td class="yes">Yes</td></tr>
+        <tr><td>Jar Studio</td><td class="no">No</td><td class="yes">Yes</td></tr>
+        <tr><td>Shelf trim and lighting</td><td class="no">No</td><td class="yes">Yes</td></tr>
+        <tr><td>Colour tuning</td><td class="no">As captured</td><td class="hi">Yes, disclosed on the jar</td></tr>
+        <tr><td>Render export</td><td>Small</td><td class="hi">Full resolution, licensed</td></tr>
+        <tr><td>Export your data</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+      </tbody>
+    </table>
+
+    <p class="rule">Colour tuning is the one that needs saying out loud. A sensor
+      is not an eye, so premium can nudge the hue toward what you actually saw.
+      <b>The jar then says it was adjusted, and by how much.</b> The original
+      reading is kept and shown next to it.</p>
+  </section>
+
+  <section class="wrap">
+    <p class="sec-label"><b>03</b> &nbsp;/&nbsp; And none of it leaks</p>
+    <p class="lede">Show the jars.
+      <span>Not the receipts, the vendor, or where you were standing.</span></p>
+    <div class="grid">
+      <div class="cell"><span class="n">01</span><h3>The photo is stripped before it leaves</h3>
+        <p>GPS, camera serial and timestamps come off in your browser, before anything
+           uploads. If the scrubber cannot verify a file is clean, it refuses to send it.</p></div>
+      <div class="cell"><span class="n">02</span><h3>Encrypted with a key we never hold</h3>
+        <p>Your passphrase unwraps a key that stays on your device. Notes, prices and
+           vendors are sealed before they reach us. Lose the passphrase and the data is
+           gone, including for us.</p></div>
+      <div class="cell"><span class="n">03</span><h3>A shared shelf is a copy, not a window</h3>
+        <p>Publishing sends a projection with a fixed column list. Prices, vendors, batch
+           codes and dates cannot leak, because they were never in what left.</p></div>
+      <div class="cell"><span class="n">04</span><h3>You can take it and go</h3>
+        <p>Export everything whenever you want. Delete it and it is deleted. No export
+           fee, no thirty day window, no talking to anyone first.</p></div>
+    </div>
+  </section>
+  <section class="wrap cta">
+    <h2>Start your shelf.</h2>
+    <form id="waitlist" novalidate>
+      <input type="email" id="email" placeholder="you@wherever" autocomplete="email">
+      <button type="submit">Get early access</button>
+    </form>
+    <p class="fine" id="fine">One email when it opens. Nothing else, ever.</p>
+  </section>
+  <footer>
+    <span>Meltshelf</span>
+    <span>
+      <!-- Quiet, deliberately. A designer looking for this will find it; a
+           collector deciding whether to log their first jar should not have to
+           read past it. -->
+      <a href="./studio.html">For designers and brands</a>
+      &nbsp;·&nbsp;
+      <a href="https://saibot.studio">Built by Saibot Studio</a>
+    </span>
+  </footer>
+</main>
+
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/three.module.js",
+  "three/addons/": "./vendor/three/addons/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createResinCultureJarModel, createJarLights, CONTENTS, LIGHTING, DIM }
+  from './src/createJarModel.js';
+import { makeCharrasPack } from './src/labelArtCharras.js';
+
+/* Browsers restore scroll position across a reload, which on a scroll-driven
+   page drops a returning visitor into the middle of the animation with no hero
+   and no context. The ride has to start at the start. */
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const stage = document.getElementById('stage');
+const $ = (id) => document.getElementById(id);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.98;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#08090B');
+scene.fog = new THREE.Fog('#08090B', 260, 900);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 1, 3000);
+scene.add(createJarLights(LIGHTING.studio));
+
+/* =====================================================================
+   ONE SCENE, NOT TWO
+
+   The hero jar and the shelf are the same scene and the same camera. No
+   crossfade, no second canvas: the jar you unscrew IS the jar that ends up
+   in the wish list bay, and the shelf assembles around it as you pull back.
+   A cut here would throw away the only moment that makes the two halves
+   feel like one product.
+
+   The plank is present from the very first frame. Up close it reads as a
+   dark surface the jar is standing on; only when the camera retreats does
+   it become a shelf. Nothing has to magically appear.
+   ===================================================================== */
+const STRIP_X = -34, STRIP_W = 560;
+
+const plank = new THREE.Mesh(
+  new THREE.BoxGeometry(STRIP_W, 8, 96),
+  new THREE.MeshStandardMaterial({ color: new THREE.Color('#15181D'), roughness: .74, metalness: .12 }),
+);
+plank.position.set(STRIP_X, -4, 0);
+plank.receiveShadow = true;
+scene.add(plank);
+
+const dividers = [];
+for (const dx of [-52, 52]) {
+  const d = new THREE.Mesh(
+    new THREE.BoxGeometry(1.5, 46, 92),
+    new THREE.MeshStandardMaterial({ color: new THREE.Color('#1B1F25'), roughness: .8,
+      transparent: true, opacity: 0 }),
+  );
+  d.position.set(dx, 23, 0);
+  d.visible = false;
+  scene.add(d); dividers.push(d);
+}
+
+const ROSTER = [
+  { key: 'sour-diesel-bx2', bay: 'rotation',  x: -168 },
+  { key: 'rodman',          bay: 'rotation',  x: -100 },
+  { key: 'charras',         bay: 'wishlist',  x: 0     },   // the hero
+  { key: 'charras-neon',    bay: 'prototype', x: 100   },
+];
+const BAYS = {
+  rotation:  { label: 'Current rotation', sub: 'free + premium', cls: 'rot',   x: -134 },
+  wishlist:  { label: 'Wish list',        sub: 'premium',        cls: 'wish',  x: 0 },
+  prototype: { label: 'Prototype',        sub: 'premium · quarantined', cls: 'proto', x: 100 },
+};
+
+const jars = {};
+let hero = null;
+
+async function build() {
+  const logo = await createImageBitmap(
+    await fetch('./assets/charras-logo.png').then((r) => r.blob()));
+  await document.fonts.ready;
+
+  const small = innerWidth < 820;
+  for (const it of ROSTER) {
+    const isHero = it.key === 'charras';
+    const label = isHero
+      ? { ...makeCharrasPack({ logo }), contents: CONTENTS.warmBlonde, lighting: LIGHTING.studio }
+      : it.key === 'charras-neon'
+      ? { ...makeCharrasPack({ logo, colourway: 'neon',
+            copy: { strainA: 'RODMAN', strainX: 'x', strainB: 'OISHII',
+                    spec: '90u  ·  LIVE ROSIN' } }),
+          contents: CONTENTS.warmBlonde, lighting: LIGHTING.studio }
+      : it.key;
+    // the hero is read at arm's length, the rest at shelf distance
+    const px = isHero ? (small ? 360 : 620) : (small ? 200 : 300);
+    const jar = createResinCultureJarModel({
+      label, textureSize: Math.round(px * 7.194),
+      anisotropy: renderer.capabilities.getMaxAnisotropy(),
+    });
+    jar.position.set(it.x, 0, 0);
+    if (!isHero) { jar.scale.setScalar(0.001); jar.visible = false; }
+    else { hero = jar; }
+    scene.add(jar);
+    jars[it.key] = jar;
+  }
+  $('loader').classList.add('gone');
+}
+
+/* =====================================================================
+   SHELF TRIM AND SMOKE
+
+   Ported from shelf.html. One colour function drives three consumers so they
+   can never disagree: the strip texture, the spill lights that land on the
+   jars, and the tint the smoke picks up. Colour is a function of position
+   along the shelf, 0 to 1.
+
+   Both ramp in with the shelf reveal rather than switching on, so the pull
+   back lands as a room coming up rather than a light being flipped.
+   ===================================================================== */
+const TRIM = { mode: 'rainbow', solid: '#51EC43', a: '#51EC43', b: '#FF7A18',
+               speed: 0.30, glow: 0, userGlow: 0.75, phase: 0 };
+
+const _c1 = new THREE.Color(), _c2 = new THREE.Color(), _out = new THREE.Color();
+function trimColourAt(t) {
+  if (TRIM.mode === 'solid') return _out.set(TRIM.solid);
+  if (TRIM.mode === 'gradient') { _c1.set(TRIM.a); _c2.set(TRIM.b); return _out.copy(_c1).lerp(_c2, t); }
+  if (TRIM.mode === 'rainbow') return _out.setHSL((((t * 0.85 + TRIM.phase) % 1) + 1) % 1, 0.85, 0.55);
+  return _out.set('#000000');
+}
+
+const stripCv = document.createElement('canvas');
+stripCv.width = 256; stripCv.height = 1;
+const stripCtx = stripCv.getContext('2d');
+const stripTex = new THREE.CanvasTexture(stripCv);
+stripTex.colorSpace = THREE.SRGBColorSpace;
+const strip = new THREE.Mesh(
+  new THREE.BoxGeometry(STRIP_W, 2.4, 1.2),
+  new THREE.MeshBasicMaterial({ map: stripTex, toneMapped: false, transparent: true, opacity: 0 }),
+);
+strip.position.set(STRIP_X, 1.7, 49.5);
+strip.visible = false;
+scene.add(strip);
+
+const SPILL = [];
+for (let i = 0; i < 9; i++) {
+  const l = new THREE.PointLight(0xffffff, 0, 230, 2);
+  l.position.set(STRIP_X - STRIP_W / 2 + (i + 0.5) * (STRIP_W / 9), 10, 41.5);
+  l.visible = false;
+  scene.add(l);
+  SPILL.push(l);
+}
+
+function paintTrim() {
+  const on = TRIM.mode !== 'off' && TRIM.glow > 0.001;
+  strip.visible = on;
+  for (const l of SPILL) l.visible = on;
+  if (!on) return;
+  strip.material.opacity = Math.min(1, TRIM.glow * 1.6);
+  for (let x = 0; x < stripCv.width; x++) {
+    const c = trimColourAt(x / (stripCv.width - 1));
+    stripCtx.fillStyle = '#' + c.getHexString();
+    stripCtx.fillRect(x, 0, 1, 1);
+  }
+  stripTex.needsUpdate = true;
+  SPILL.forEach((l, i) => {
+    l.color.copy(trimColourAt((i + 0.5) / SPILL.length));
+    l.intensity = 28 * TRIM.glow;
+  });
+}
+
+function puffTexture() {
+  const S = 128, cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const c = cv.getContext('2d');
+  const g = c.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  g.addColorStop(0.0, 'rgba(255,255,255,0.42)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0.16)');
+  g.addColorStop(1.0, 'rgba(255,255,255,0)');
+  c.fillStyle = g; c.fillRect(0, 0, S, S);
+  const img = c.getImageData(0, 0, S, S), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const x = (i / 4) % S, y = Math.floor(i / 4 / S);
+    const n = Math.sin(x * 0.21) * Math.cos(y * 0.17) + Math.sin((x + y) * 0.09);
+    d[i + 3] = Math.max(0, Math.min(255, d[i + 3] * (0.62 + n * 0.30)));
+  }
+  c.putImageData(img, 0, 0);
+  return new THREE.CanvasTexture(cv);
+}
+
+const SMOKE = { on: true, amount: 0.60, ramp: 0, puffs: [] };
+const puffTex = puffTexture();
+const smokeGroup = new THREE.Group();
+smokeGroup.visible = false;
+scene.add(smokeGroup);
+const GREY = new THREE.Color(0xBFC6CE);
+for (let i = 0; i < 48; i++) {
+  const m = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: puffTex, transparent: true, depthWrite: false, opacity: 0,
+    color: 0xBFC6CE, toneMapped: false,
+  }));
+  const reset = (initial) => {
+    m.userData.x = STRIP_X + (Math.random() - 0.5) * 520;
+    m.userData.y = initial ? Math.random() * 90 : -6 + Math.random() * 12;
+    m.userData.z = (Math.random() - 0.5) * 90;
+    m.userData.vy = 3.5 + Math.random() * 7;
+    m.userData.drift = (Math.random() - 0.5) * 4;
+    m.userData.life = initial ? Math.random() * 8 : 0;
+    m.userData.span = 7 + Math.random() * 9;
+    m.userData.size = 42 + Math.random() * 76;
+  };
+  reset(true);
+  m.userData.reset = reset;
+  smokeGroup.add(m);
+  SMOKE.puffs.push(m);
+}
+
+const clock = new THREE.Clock();
+function stepFx(dt) {
+  if (TRIM.mode === 'rainbow' && TRIM.glow > 0.001) {
+    TRIM.phase = (TRIM.phase + dt * TRIM.speed * 0.35) % 1;
+    paintTrim();
+  }
+  const vis = SMOKE.on && SMOKE.ramp > 0.01;
+  smokeGroup.visible = vis;
+  if (!vis) return;
+  for (const m of SMOKE.puffs) {
+    const u = m.userData;
+    u.life += dt;
+    if (u.life > u.span) u.reset(false);
+    u.y += u.vy * dt;
+    u.x += u.drift * dt;
+    const t = u.life / u.span;
+    m.position.set(u.x, u.y, u.z);
+    m.scale.setScalar(u.size * (0.7 + t * 0.8));
+    m.material.opacity = Math.sin(Math.min(1, t) * Math.PI) * 0.30 * SMOKE.amount * SMOKE.ramp;
+    if (TRIM.mode !== 'off' && TRIM.glow > 0.001) {
+      const tx = (u.x - (STRIP_X - STRIP_W / 2)) / STRIP_W;
+      m.material.color.copy(trimColourAt(Math.max(0, Math.min(1, tx)))).lerp(GREY, 0.55);
+    } else m.material.color.copy(GREY);
+  }
+}
+
+/* ------------------------------------------------------------ the ride */
+const KEYS = [
+  //   p    open   camera x,y,z          target x,y     shelf reveal 0..1
+  { p: 0.00, open: 0.00, c: [  6,  34, 146], t: [0, 40], s: 0 },
+  { p: 0.16, open: 0.00, c: [ 14,  28, 116], t: [0, 26], s: 0 },
+  { p: 0.38, open: 1.00, c: [ 30,  40, 108], t: [0, 23], s: 0 },
+  { p: 0.52, open: 2.00, c: [ 22,  66,  84], t: [0, 26], s: 0 },
+  { p: 0.62, open: 2.00, c: [  8,  80,  76], t: [0, 27], s: 0 },
+  // the pull-back: cap screws itself home while the shelf assembles
+  { p: 0.76, open: 0.60, c: [-10,  84, 210], t: [-14, 22], s: 0.45 },
+  { p: 0.88, open: 0.00, c: [-26, 122, 348], t: [-30, 21], s: 1 },
+  { p: 1.00, open: 0.00, c: [-34, 150, 470], t: [-34, 20], s: 1 },
+];
+const smooth = (t) => t * t * (3 - 2 * t);
+function sample(p) {
+  let i = 0;
+  while (i < KEYS.length - 2 && p > KEYS[i + 1].p) i++;
+  const a = KEYS[i], b = KEYS[i + 1];
+  const span = b.p - a.p;
+  const t = smooth(span <= 0 ? 0 : THREE.MathUtils.clamp((p - a.p) / span, 0, 1));
+  const L = (x, y) => x + (y - x) * t;
+  return {
+    open: L(a.open, b.open),
+    c: a.c.map((v, k) => L(v, b.c[k])),
+    tgt: a.t.map((v, k) => L(v, b.t[k])),
+    s: L(a.s, b.s),
+  };
+}
+
+const panels = [...document.querySelectorAll('.panel')];
+const bayEls = {};
+for (const [k, b] of Object.entries(BAYS)) {
+  const el = document.createElement('div');
+  el.className = 'bay ' + b.cls;
+  el.innerHTML = `<b>${b.label}</b><span>${b.sub}</span>`;
+  document.body.appendChild(el);
+  bayEls[k] = el;
+}
+const v3 = new THREE.Vector3();
+
+/* Once the ride is done the shelf keeps turning, slowly. It is the difference
+   between a page that finished and a page that is still running. */
+let drift = 0;
+let target = 0, current = 0;
+function readScroll() {
+  const doc = $('scroller');
+  const span = doc.offsetHeight - innerHeight;
+  target = span <= 0 ? 0 : THREE.MathUtils.clamp(-doc.getBoundingClientRect().top / span, 0, 1);
+}
+addEventListener('scroll', readScroll, { passive: true });
+readScroll();
+
+function apply(p) {
+  const k = sample(p);
+  if (hero) hero.userData.sculptRuntime.setOpen(k.open);
+
+  // idle orbit, ramped in over the last stretch so it never starts with a jolt
+  const idle = smooth(THREE.MathUtils.clamp((p - 0.93) / 0.07, 0, 1));
+  const cx = k.tgt[0], a = drift * idle;
+  const dx = k.c[0] - cx, dz = k.c[2];
+  camera.position.set(
+    cx + dx * Math.cos(a) - dz * Math.sin(a),
+    k.c[1],
+    dx * Math.sin(a) + dz * Math.cos(a),
+  );
+  camera.lookAt(k.tgt[0], k.tgt[1], 0);
+
+  // the shelf assembles, staggered so it does not all pop at once
+  ROSTER.forEach((it, i) => {
+    if (it.key === 'charras') return;
+    const jar = jars[it.key];
+    if (!jar) return;
+    const lead = [0.00, 0.18, 0.36][[-168, -100, 100].indexOf(it.x)] ?? 0;
+    const g = THREE.MathUtils.clamp((k.s - lead) / 0.55, 0, 1);
+    const e = smooth(g);
+    jar.visible = e > 0.002;
+    // Scale only, no rise. The jar model's origin is its standing heel, so
+    // scaling grows it up out of the shelf surface on its own. Offsetting y as
+    // well pushed it through the plank and you caught it half-submerged.
+    jar.scale.setScalar(Math.max(0.001, e));
+  });
+  for (const d of dividers) {
+    d.visible = k.s > 0.02;
+    d.material.opacity = smooth(THREE.MathUtils.clamp((k.s - 0.2) / 0.5, 0, 1));
+  }
+
+  // trim and smoke come up WITH the shelf, not as a switch
+  const lift = smooth(THREE.MathUtils.clamp((k.s - 0.25) / 0.7, 0, 1));
+  TRIM.glow = lift * TRIM.userGlow;
+  SMOKE.ramp = lift;
+  if (TRIM.mode !== 'rainbow') paintTrim();
+
+  // the trim controls belong to the shelf act. Once the copy starts they are
+  // furniture from a different room.
+  $('fx').classList.toggle('on', k.s > 0.9 && p < 0.995);
+  $('sponsor').classList.toggle('on', p < 0.12);
+
+  $('hero').classList.toggle('hidden', p > 0.10);
+  $('cue').classList.toggle('hidden', p > 0.05);
+  $('railFill').style.height = (p * 100).toFixed(2) + '%';
+  for (const el of panels) {
+    el.classList.toggle('on', Math.abs(p - parseFloat(el.dataset.at)) < 0.085);
+  }
+
+  // bay captions only once the shelf is actually legible
+  const capOn = k.s > 0.85;
+  for (const [key, b] of Object.entries(BAYS)) {
+    const el = bayEls[key];
+    el.style.opacity = capOn ? 1 : 0;
+    if (!capOn) continue;
+    v3.set(b.x, -10, 58).project(camera);
+    el.style.left = ((v3.x * 0.5 + 0.5) * innerWidth) + 'px';
+    el.style.top = ((-v3.y * 0.5 + 0.5) * innerHeight) + 'px';
+  }
+}
+
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, clock.getDelta());
+  stepFx(dt);
+  drift += dt * 0.055;                 // radians per second, deliberately slow
+  current += (target - current) * 0.10;
+  // The canvas is fixed and visible behind the copy for the whole page, so the
+  // old "stop when the scroller leaves" check would freeze what the reader can
+  // still see. Only a hidden tab stops it now.
+  if (document.hidden) return;
+  apply(current);
+  renderer.render(scene, camera);
+}
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  readScroll();
+});
+
+/* The controls are a taste of the premium shelf trim, deliberately given away
+   on the landing page: it is the feature that is most fun in ten seconds. */
+function setMode(mode) {
+  TRIM.mode = mode;
+  for (const b of $('trimSeg').children) b.classList.toggle('on', b.dataset.mode === mode);
+  $('rowSolid').hidden = mode !== 'solid';
+  $('rowGrad').hidden = mode !== 'gradient';
+  paintTrim();
+}
+for (const b of $('trimSeg').children) b.addEventListener('click', () => setMode(b.dataset.mode));
+$('cSolid').addEventListener('input', (e) => { TRIM.solid = e.target.value; paintTrim(); });
+$('cA').addEventListener('input', (e) => { TRIM.a = e.target.value; paintTrim(); });
+$('cB').addEventListener('input', (e) => { TRIM.b = e.target.value; paintTrim(); });
+$('smokeBtn').addEventListener('click', () => {
+  SMOKE.on = !SMOKE.on;
+  $('smokeBtn').classList.toggle('on', SMOKE.on);
+  $('smokeBtn').textContent = SMOKE.on ? 'On' : 'Off';
+});
+$('smokeAmt').addEventListener('input', (e) => { SMOKE.amount = +e.target.value; });
+
+/* Sponsor credit. Reads from <body data-sponsor="Name">, so it cannot show a
+   partner who has not signed: no attribute, no credit. */
+const sponsorName = document.body.dataset.sponsor;
+if (sponsorName) $('sponsorName').textContent = sponsorName;
+
+$('waitlist').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const v = $('email').value.trim();
+  $('fine').textContent = /.+@.+\..+/.test(v)
+    ? 'Not wired up yet. Nothing was sent, and nothing was stored.'
+    : 'That does not look like an email address.';
+});
+
+await build();
+if (reduced) { apply(0.9); renderer.render(scene, camera); }
+else { apply(0); frame(); }
+
+window.__home = { scene, camera, jars, apply, sample, KEYS, renderer, ROSTER,
+                  TRIM, SMOKE, setMode, paintTrim, trimColourAt };
+</script>
+</body>
+</html>

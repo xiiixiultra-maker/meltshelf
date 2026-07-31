@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Discover — Meltshelf</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#08090B;--pane:#0F1114;
+  --green:#51EC43;--greenGlow:rgba(81,236,67,.18);
+  --orange:#FF7A18;
+  --silver:#EDF1F5;
+  --l1:var(--silver);--l2:rgba(237,241,245,.62);--l3:rgba(237,241,245,.34);
+  --line:rgba(237,241,245,.12);
+  --ease:cubic-bezier(.66,0,.01,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+::selection{background:var(--green);color:#06210A}
+body{background:var(--bg);color:var(--l1);font-family:'Archivo',system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1180px;margin:0 auto;padding:0 clamp(18px,4vw,40px)}
+
+header{border-bottom:1px solid var(--line);padding:18px 0;position:sticky;top:0;
+  background:rgba(8,9,11,.92);backdrop-filter:blur(14px);z-index:20}
+header .wrap{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.brand{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.26em;
+  text-transform:uppercase;color:var(--l3)}
+.brand b{color:var(--green);font-weight:500}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.chip{background:rgba(237,241,245,.05);border:1px solid var(--line);color:var(--l2);
+  border-radius:99px;padding:6px 13px;font:inherit;font-size:11.5px;cursor:pointer;
+  transition:all .2s var(--ease)}
+.chip:hover{border-color:rgba(237,241,245,.3)}
+.chip.on{background:var(--greenGlow);border-color:var(--green);color:var(--green)}
+.chip.trust.on{background:rgba(81,236,67,.14);border-color:var(--green)}
+
+.lede{padding:clamp(34px,5vw,58px) 0 clamp(20px,3vw,32px)}
+.lede h1{font-size:clamp(26px,3.4vw,40px);font-weight:800;letter-spacing:-.02em;line-height:1.12}
+.lede p{margin-top:12px;font-size:14px;color:var(--l2);max-width:60ch;line-height:1.64}
+.lede .consent{margin-top:16px;font-size:12.5px;line-height:1.6;color:var(--l3);
+  border-left:2px solid var(--orange);padding-left:13px;max-width:64ch}
+.lede .consent b{color:var(--orange)}
+
+.grid{display:grid;gap:14px;padding-bottom:70px;
+  grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}
+.card{background:var(--pane);border:1px solid var(--line);border-radius:6px;
+  overflow:hidden;transition:border-color .25s var(--ease),transform .25s var(--ease)}
+.card:hover{border-color:rgba(81,236,67,.42);transform:translateY(-2px)}
+.shelfimg{width:100%;aspect-ratio:16/9;display:block;background:#0B0E12;object-fit:cover}
+.card .meta{padding:14px 15px 15px}
+.card .who{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.card .handle{font-size:14px;font-weight:700}
+.card .n{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--l3)}
+.card .title{margin-top:3px;font-size:12.5px;color:var(--l2)}
+.card .tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:11px}
+.tag{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.12em;
+  text-transform:uppercase;padding:4px 8px;border-radius:3px;border:1px solid var(--line);
+  color:var(--l3)}
+.tag.p{color:var(--green);border-color:rgba(81,236,67,.4);background:rgba(81,236,67,.07)}
+.card .bar{display:flex;height:3px;margin-top:12px;border-radius:2px;overflow:hidden;
+  background:rgba(237,241,245,.07)}
+.card .bar i{display:block;height:100%}
+.card .bar .hand{background:var(--green)}
+.card .bar .up{background:var(--orange)}
+.card .prov{margin-top:7px;font-family:'IBM Plex Mono',monospace;font-size:9.5px;
+  letter-spacing:.1em;color:var(--l3)}
+.card .prov b{color:var(--green);font-weight:500}
+
+#empty{padding:60px 0;color:var(--l3);font-size:14px}
+footer{border-top:1px solid var(--line);padding:24px 0;font-family:'IBM Plex Mono',monospace;
+  font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--l3)}
+footer .wrap{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+footer a:hover{color:var(--green)}
+</style>
+</head>
+<body>
+
+<header><div class="wrap">
+  <a class="brand" href="./home.html"><b>Meltshelf</b> &nbsp;/&nbsp; Discover</a>
+  <div class="filters" id="filters">
+    <button class="chip trust" data-f="inhand">In hand only</button>
+    <button class="chip" data-f="ice_water">Ice water</button>
+    <button class="chip" data-f="dry_sift">Dry sift</button>
+    <button class="chip" data-f="rosin">Rosin</button>
+    <button class="chip" data-f="temple">Temple ball</button>
+    <button class="chip" data-f="living_soil">Living soil</button>
+  </div>
+</div></header>
+
+<div class="wrap lede">
+  <h1>Shelves people chose to show.</h1>
+  <p>Every shelf here was listed on purpose. Sorted by what is actually in the
+     jars, not by who posts most.</p>
+  <p class="consent"><b>Listing is a separate switch from sharing.</b> A shelf
+     can be shareable by link and still never appear on this page. Nothing lands
+     here because somebody sent a friend a link, and turning listing off removes
+     it immediately.</p>
+</div>
+
+<div class="wrap"><div class="grid" id="grid"></div></div>
+<div class="wrap" id="empty" hidden>Nothing matches those filters.</div>
+
+<footer><div class="wrap">
+  <span>Discover</span>
+  <span><a href="./home.html">Meltshelf</a> &nbsp;·&nbsp; <a href="./shelf.html">A shelf</a></span>
+</div></footer>
+
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/three.module.js",
+  "three/addons/": "./vendor/three/addons/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createResinCultureJarModel, createJarLights, CONTENTS, LIGHTING }
+  from './src/createJarModel.js';
+import { makeCharrasPack } from './src/labelArtCharras.js';
+
+/* =====================================================================
+   PLACEHOLDER DATA
+
+   Fictional shelves, real jars. Handles are obviously invented so nobody
+   mistakes this for live content. The shape is what matters: what a card
+   has to carry for a stranger to decide whether to open it.
+   ===================================================================== */
+const SHELVES = [
+  { handle: '@coldroom', title: 'Winter rotation', jars: ['rodman','sour-diesel-bx2','charras'],
+    n: 14, inhand: 12, tags: ['ice_water','rosin'], soil: true },
+  { handle: '@sixstaronly', title: 'Full melt or nothing', jars: ['sour-diesel-bx2','charras','rodman'],
+    n: 31, inhand: 31, tags: ['ice_water','temple'], soil: true },
+  { handle: '@thewashhouse', title: 'What we ran this month', jars: ['charras','rodman','sour-diesel-bx2'],
+    n: 9, inhand: 6, tags: ['rosin','dry_sift'], soil: false },
+  { handle: '@piatella.club', title: 'Pressed and patient', jars: ['rodman','charras','sour-diesel-bx2'],
+    n: 22, inhand: 15, tags: ['temple','dry_sift'], soil: true },
+  { handle: '@terpsonly', title: 'Nose first', jars: ['sour-diesel-bx2','rodman','charras'],
+    n: 7, inhand: 7, tags: ['rosin'], soil: false },
+  { handle: '@notill.hash', title: 'Living soil only', jars: ['charras','sour-diesel-bx2','rodman'],
+    n: 18, inhand: 11, tags: ['ice_water','living_soil'], soil: true },
+];
+
+/* ---------------------------------------------------------------------
+   THUMBNAILS
+
+   One offscreen renderer, each jar rendered once, then reused across every
+   card. Twenty live canvases on a browse page would melt a phone, and the
+   real product would bake these on publish and serve images anyway. This
+   just proves the layout with real geometry instead of grey boxes.
+   --------------------------------------------------------------------- */
+const TW = 640, TH = 360;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(TW, TH);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.98;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#0B0E12');
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.add(createJarLights(LIGHTING.studio));
+const camera = new THREE.PerspectiveCamera(30, TW / TH, 1, 900);
+
+const plank = new THREE.Mesh(
+  new THREE.BoxGeometry(320, 6, 80),
+  new THREE.MeshStandardMaterial({ color: new THREE.Color('#15181D'), roughness: .76 }),
+);
+plank.position.y = -3;
+scene.add(plank);
+
+const built = {};
+async function buildJars() {
+  const logo = await createImageBitmap(
+    await fetch('./assets/charras-logo.png').then((r) => r.blob()));
+  await document.fonts.ready;
+  for (const key of ['sour-diesel-bx2', 'rodman', 'charras']) {
+    const label = key === 'charras'
+      ? { ...makeCharrasPack({ logo }), contents: CONTENTS.warmBlonde, lighting: LIGHTING.studio }
+      : key;
+    built[key] = createResinCultureJarModel({
+      label, textureSize: Math.round(180 * 7.194),
+      anisotropy: renderer.capabilities.getMaxAnisotropy(),
+    });
+  }
+}
+
+function thumbFor(keys) {
+  const row = new THREE.Group();
+  keys.forEach((k, i) => {
+    const j = built[k].clone(true);
+    j.position.set((i - (keys.length - 1) / 2) * 62, 0, 0);
+    j.rotation.y = (i * 0.9) % 1.4 - 0.3;
+    row.add(j);
+  });
+  scene.add(row);
+  camera.position.set(10, 46, 168);
+  camera.lookAt(0, 19, 0);
+  renderer.render(scene, camera);
+  const url = renderer.domElement.toDataURL('image/jpeg', 0.86);
+  scene.remove(row);
+  return url;
+}
+
+/* ------------------------------------------------------------- render */
+const grid = document.getElementById('grid');
+const active = new Set();
+
+function draw() {
+  const list = SHELVES.filter((s) => {
+    for (const f of active) {
+      if (f === 'inhand') { if (s.inhand !== s.n) return false; continue; }
+      if (f === 'living_soil') { if (!s.soil) return false; continue; }
+      if (!s.tags.includes(f)) return false;
+    }
+    return true;
+  });
+  document.getElementById('empty').hidden = list.length > 0;
+  grid.innerHTML = list.map((s) => {
+    const pct = Math.round((s.inhand / s.n) * 100);
+    return `<a class="card" href="./shelf.html">
+      <img class="shelfimg" src="${s.thumb}" alt="">
+      <div class="meta">
+        <div class="who"><span class="handle">${s.handle}</span><span class="n">${s.n} jars</span></div>
+        <div class="title">${s.title}</div>
+        <div class="tags">
+          ${s.inhand === s.n ? '<span class="tag p">All in hand</span>' : ''}
+          ${s.tags.map((t) => `<span class="tag">${t.replace('_', ' ')}</span>`).join('')}
+        </div>
+        <div class="bar">
+          <i class="hand" style="width:${pct}%"></i><i class="up" style="width:${100 - pct}%"></i>
+        </div>
+        <div class="prov"><b>${s.inhand} captured in session</b> · ${s.n - s.inhand} uploaded</div>
+      </div>
+    </a>`;
+  }).join('');
+}
+
+for (const b of document.querySelectorAll('#filters .chip')) {
+  b.addEventListener('click', () => {
+    const f = b.dataset.f;
+    if (active.has(f)) { active.delete(f); b.classList.remove('on'); }
+    else { active.add(f); b.classList.add('on'); }
+    draw();
+  });
+}
+
+await buildJars();
+for (const s of SHELVES) s.thumb = thumbFor(s.jars);
+draw();
+
+window.__discover = { SHELVES, draw, active };
+</script>
+</body>
+</html>

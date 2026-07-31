@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Shelf — Meltshelf</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#08090B;--pane:#0F1114;
+  --green:#51EC43;--greenDim:#2C9A24;--greenGlow:rgba(81,236,67,.18);
+  --orange:#FF7A18;--orangeDim:#B4500C;
+  --silver:#EDF1F5;
+  --l1:var(--silver);--l2:rgba(237,241,245,.60);--l3:rgba(237,241,245,.32);
+  --line:rgba(237,241,245,.12);
+  --ease:cubic-bezier(.66,0,.01,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--l1);font-family:'Archivo',system-ui,sans-serif}
+#app{position:fixed;inset:0}
+#app canvas{display:block}
+[hidden]{display:none!important}
+
+#load{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:var(--bg);
+  font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.26em;
+  text-transform:uppercase;color:var(--l3);transition:opacity .6s var(--ease)}
+#load.gone{opacity:0;pointer-events:none}
+
+/* bay captions, projected from 3D each frame so they track the orbit */
+.bay{position:fixed;z-index:5;transform:translate(-50%,0);text-align:center;pointer-events:none;
+  font-family:'IBM Plex Mono',monospace;letter-spacing:.24em;text-transform:uppercase;
+  transition:opacity .3s}
+.bay b{display:block;font-size:11px;font-weight:500}
+.bay span{display:block;font-size:9px;color:var(--l3);margin-top:4px}
+.bay.rot b{color:var(--green)}
+.bay.wish b{color:var(--silver)}
+.bay.proto b{color:var(--orange)}
+
+header{position:fixed;left:24px;top:22px;z-index:6}
+header h1{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.24em;
+  text-transform:uppercase;color:var(--green);font-weight:500}
+header p{font-size:11px;color:var(--l3);margin-top:5px;max-width:270px;line-height:1.6}
+
+#hint{position:fixed;left:24px;bottom:20px;z-index:6;font-family:'IBM Plex Mono',monospace;
+  font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--l3)}
+
+#fx{position:fixed;left:24px;bottom:56px;z-index:7;width:300px;background:var(--pane);
+  border:1px solid var(--line);border-radius:5px;padding:13px 14px}
+.fx-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:11px}
+.fx-head b{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--green);font-weight:500}
+.sw{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--l3);cursor:pointer;
+  font-family:'IBM Plex Mono',monospace;letter-spacing:.14em;text-transform:uppercase}
+.sw input{accent-color:var(--orange);width:13px;height:13px}
+.fx-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.fx-row label{flex:0 0 54px;font-size:11px;color:var(--l2)}
+.fx-row input[type=range]{flex:1;accent-color:var(--green);min-width:0}
+.fx-row input[type=color]{width:30px;height:23px;padding:0;border:1px solid var(--line);
+  border-radius:3px;background:none;cursor:pointer}
+.tog{background:rgba(237,241,245,.05);border:1px solid var(--line);color:var(--l2);
+  border-radius:3px;padding:5px 11px;font:inherit;font-size:11px;cursor:pointer}
+.tog.on{background:var(--greenGlow);border-color:var(--green);color:var(--green)}
+.seg{display:flex;flex:1;gap:3px;min-width:0}
+.seg button{flex:1;background:rgba(237,241,245,.05);border:1px solid var(--line);
+  color:var(--l3);border-radius:3px;padding:5px 2px;font:inherit;font-size:10px;cursor:pointer}
+.seg button.on{background:var(--greenGlow);border-color:var(--green);color:var(--green)}
+.fx-lock{transition:opacity .3s}
+.fx-lock.locked{opacity:.34;pointer-events:none}
+.gate{font-size:10px;line-height:1.5;color:var(--orange);margin-top:2px}
+.fx-lock:not(.locked) .gate{display:none}
+
+/* the card */
+#card{position:fixed;right:22px;top:22px;width:310px;z-index:7;background:var(--pane);
+  border:1px solid var(--line);border-radius:5px;padding:17px;
+  transition:opacity .3s var(--ease),transform .3s var(--ease)}
+#card.off{opacity:0;transform:translateX(10px);pointer-events:none}
+#card h2{font-size:17px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
+#card .strain{font-size:12px;color:var(--l2);margin-top:3px}
+.badge{display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border-radius:3px;
+  font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.16em;
+  text-transform:uppercase;border:1px solid;margin-top:12px}
+.badge i{width:5px;height:5px;border-radius:50%;background:currentColor}
+.badge.hand{color:var(--green);border-color:var(--green);background:var(--greenGlow)}
+.badge.up{color:var(--orange);border-color:rgba(255,122,24,.5);background:rgba(255,122,24,.08)}
+.badge.none{color:var(--l3);border-color:var(--line)}
+
+/* Gradient badges for the two bays that have no provenance to state.
+   Deliberately nothing like the provenance badges: those are flat green or
+   flat orange, these are swept. A shelf-kind badge must never be mistaken for
+   a claim about where the jar came from.
+
+   The gradient border is the two-background trick: a flat pane fill clipped to
+   the padding box, over a gradient clipped to the border box. */
+.badge.grad{
+  border:1px solid transparent;
+  background:linear-gradient(var(--pane),var(--pane)) padding-box,
+             var(--sweep) border-box;
+}
+.badge.grad span{
+  background:var(--sweep);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.badge.grad i{background:var(--sweep)}
+.badge.wish{--sweep:linear-gradient(96deg,#FF4D6D,#FF7A18,#E8C15E,#51EC43,#29D8FF,#7A5CFF,#FF4DA6)}
+.badge.proto{--sweep:linear-gradient(96deg,var(--green),var(--orange))}
+#card table{width:100%;border-collapse:collapse;font-size:12px;margin-top:14px}
+#card td{padding:5px 0;border-bottom:1px solid rgba(237,241,245,.06)}
+#card td:last-child{text-align:right;font-family:'IBM Plex Mono',monospace;
+  color:var(--l2);font-size:11px}
+#card .note{margin-top:13px;font-size:11px;line-height:1.6;color:var(--l3);
+  border-left:2px solid var(--line);padding-left:10px}
+#card .note.warn{border-color:var(--orange);color:rgba(255,180,130,.8)}
+.chip{width:13px;height:13px;border-radius:2px;display:inline-block;vertical-align:-2px;
+  margin-right:6px;border:1px solid rgba(255,255,255,.2)}
+</style>
+</head>
+<body>
+
+<div id="load"><span>Building the shelf</span></div>
+<div id="app"></div>
+
+<header>
+  <h1>The Shelf</h1>
+  <p>Three bays, three rules. Provenance is earned on every account; the bays
+     are what you paid for.</p>
+</header>
+
+<div id="hint">Drag to orbit · scroll to zoom · click a jar</div>
+
+<div id="fx">
+  <div class="fx-head">
+    <b>Shelf</b>
+    <label class="sw"><input type="checkbox" id="premium"><span>Premium</span></label>
+  </div>
+
+  <div class="fx-row">
+    <label>Smoke</label>
+    <button id="smokeBtn" class="tog">Off</button>
+    <input type="range" id="smokeAmt" min="0" max="1" step="0.02" value="0.55" disabled>
+  </div>
+
+  <div class="fx-lock locked" id="lock">
+    <div class="fx-row">
+      <label>Trim</label>
+      <div class="seg" id="trimSeg">
+        <button data-mode="off" class="on">Off</button>
+        <button data-mode="solid">Solid</button>
+        <button data-mode="gradient">Grad</button>
+        <button data-mode="rainbow">Rainbow</button>
+      </div>
+    </div>
+    <div class="fx-row" id="rowSolid" hidden>
+      <label>Colour</label><input type="color" id="cSolid" value="#51EC43">
+    </div>
+    <div class="fx-row" id="rowGrad" hidden>
+      <label>From/to</label>
+      <input type="color" id="cA" value="#51EC43">
+      <input type="color" id="cB" value="#FF7A18">
+    </div>
+    <div class="fx-row" id="rowSpeed" hidden>
+      <label>Speed</label><input type="range" id="tSpeed" min="0" max="1" step="0.02" value="0.3">
+    </div>
+    <div class="fx-row">
+      <label>Glow</label><input type="range" id="tGlow" min="0" max="1" step="0.02" value="0.7">
+    </div>
+    <p class="gate">Shelf trim is a premium feature. Toggle Premium to try it.</p>
+  </div>
+</div>
+
+<div id="card" class="off">
+  <h2 id="c-name">—</h2>
+  <p class="strain" id="c-strain">—</p>
+  <div class="badge none" id="c-badge"><i></i><span>—</span></div>
+  <table>
+    <tr><td>shelf</td><td id="c-shelf">—</td></tr>
+    <tr><td>colour</td><td id="c-col">—</td></tr>
+    <tr><td>captured</td><td id="c-cap">—</td></tr>
+    <tr><td>displayed</td><td id="c-disp">—</td></tr>
+    <tr><td>edit</td><td id="c-edit">—</td></tr>
+  </table>
+  <p class="note" id="c-note"></p>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/three.module.js",
+  "three/addons/": "./vendor/three/addons/",
+  "culori": "./vendor/culori/culori.mjs"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createResinCultureJarModel, createJarLights, LABELS, CONTENTS, LIGHTING, DIM }
+  from './src/createJarModel.js';
+import { makeCharrasPack } from './src/labelArtCharras.js';
+import { converter, differenceEuclidean } from 'culori';
+
+const toOk = converter('oklab');
+const dE = differenceEuclidean('oklab');
+
+/* =====================================================================
+   THE ROSTER
+
+   Provenance and shelf are INDEPENDENT, which is the one rule the whole
+   product hangs off. A free account can hold `in_hand`; paying only buys
+   which bays exist. So the Resin Culture jars carry the strongest badge
+   available while the two premium bays carry none at all, for different
+   reasons:
+
+     wishlist   you do not own it, so there is nothing to attest
+     prototype  nobody ever owned it, so a badge would be a lie
+   ===================================================================== */
+const ROSTER = [
+  { key: 'sour-diesel-bx2', name: 'Sour Diesel BX2', strain: 'Sour Diesel BX2',
+    brand: 'Resin Culture', bay: 'rotation', provenance: 'in_hand',
+    captured: '#E4D3A4', display: '#E4D3A4', x: -168 },
+
+  { key: 'rodman', name: 'Rodman', strain: 'Gary Payton x Rainbow Guava',
+    brand: 'Resin Culture', bay: 'rotation', provenance: 'in_hand',
+    captured: '#D9DEBE', display: '#D5DCB4', x: -100 },
+
+  { key: 'charras', name: 'Charras', strain: 'Oishii x Gary Payton',
+    brand: 'Charras', bay: 'wishlist', provenance: null,
+    captured: null, display: '#E4D3A4', x: 0 },
+
+  { key: 'charras-neon', name: 'Charras', strain: 'Rodman x Oishii',
+    brand: 'Charras', bay: 'prototype', provenance: null,
+    captured: null, display: '#E4D3A4', x: 100 },
+];
+
+const BAYS = {
+  rotation:  { label: 'Current rotation', sub: 'free + premium', cls: 'rot',   x: -134 },
+  wishlist:  { label: 'Wish list',        sub: 'premium',        cls: 'wish',  x: 0 },
+  prototype: { label: 'Prototype',        sub: 'premium · quarantined', cls: 'proto', x: 100 },
+};
+
+/* ---------------------------------------------------------------- scene */
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.98;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#08090B');
+scene.fog = new THREE.Fog('#08090B', 300, 900);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(34, innerWidth / innerHeight, 1, 3000);
+// Framed to the whole roster, not to one bay. The jars occupy 318mm of plank
+// and the midpoint sits at x = -34, so the camera has to sit back far enough
+// that a narrow window still shows every bay. The first pass put it at 268 and
+// pushed the first jar off screen.
+camera.position.set(-34, 150, 470);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(-34, 20, 0);
+controls.enableDamping = true; controls.dampingFactor = .07;
+controls.minDistance = 90; controls.maxDistance = 900;
+controls.maxPolarAngle = Math.PI * 0.52;      // never below the plank
+
+scene.add(createJarLights(LIGHTING.studio));
+const fill = new THREE.DirectionalLight(0xbcd0e0, 0.22);
+fill.position.set(120, 60, 140);
+scene.add(fill);
+
+// the plank
+const plank = new THREE.Mesh(
+  new THREE.BoxGeometry(560, 8, 96),
+  new THREE.MeshStandardMaterial({ color: new THREE.Color('#15181D'), roughness: .74, metalness: .12 }),
+);
+plank.position.set(-34, -4, 0);
+plank.receiveShadow = true;
+scene.add(plank);
+
+// bay dividers
+for (const dx of [-52, 52]) {
+  const d = new THREE.Mesh(
+    new THREE.BoxGeometry(1.5, 46, 92),
+    new THREE.MeshStandardMaterial({ color: new THREE.Color('#1B1F25'), roughness: .8 }),
+  );
+  d.position.set(dx, 23, 0);
+  d.receiveShadow = true; d.castShadow = true;
+  scene.add(d);
+}
+
+/* ---------------------------------------------------------------- jars */
+const jars = [];
+
+/** Wish-list jars glow from inside. Material, not a badge: the shelf should
+ *  read at a glance without labels, and a glowing jar says "not mine yet". */
+function makeWishlist(root, colour) {
+  root.traverse((o) => {
+    if (o.name === 'rosin-mound' && o.material) {
+      o.material.emissive = new THREE.Color(colour);
+      o.material.emissiveIntensity = 0.55;
+    }
+  });
+  const lamp = new THREE.PointLight(new THREE.Color(colour), 9, 90, 2);
+  lamp.position.set(0, 20, 0);
+  root.add(lamp);
+}
+
+/** Prototype jars carry an orange band ON the jar, at mid height.
+ *  The spec calls for a marker that survives a screenshot, so it cannot live
+ *  in surrounding page furniture. */
+function markPrototype(root) {
+  const band = new THREE.Mesh(
+    new THREE.CylinderGeometry(DIM.R + 0.5, DIM.R + 0.5, 3.0, 96, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: new THREE.Color('#FF7A18'), side: THREE.DoubleSide,
+      transparent: true, opacity: 0.82,
+    }),
+  );
+  band.position.y = 11.5;
+  root.add(band);
+  const base = new THREE.Mesh(
+    new THREE.RingGeometry(DIM.R + 3, DIM.R + 6, 64),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color('#FF7A18'),
+      transparent: true, opacity: 0.42, side: THREE.DoubleSide }),
+  );
+  base.rotation.x = -Math.PI / 2;
+  base.position.y = 0.3;
+  root.add(base);
+}
+
+async function build() {
+  // Charras needs its logo decoded before the label can bake
+  const logo = await createImageBitmap(
+    await fetch('./assets/charras-logo.png').then((r) => r.blob()));
+  await document.fonts.ready;
+
+  for (const item of ROSTER) {
+    const label = item.key === 'charras'
+      ? { ...makeCharrasPack({ logo }), contents: CONTENTS.warmBlonde, lighting: LIGHTING.studio }
+      : item.key === 'charras-neon'
+      // same mould, same emboss, different paint: neon plate, orange logo
+      ? { ...makeCharrasPack({ logo, colourway: 'neon',
+            copy: { strainA: 'RODMAN', strainX: 'x', strainB: 'OISHII',
+                    spec: '90u  ·  LIVE ROSIN' } }),
+          contents: CONTENTS.warmBlonde, lighting: LIGHTING.studio }
+      : item.key;
+
+    const jar = createResinCultureJarModel({
+      label,
+      // small on screen, so the wrap only needs ~250px of vertical resolution
+      textureSize: 1800,
+      anisotropy: renderer.capabilities.getMaxAnisotropy(),
+    });
+    jar.position.set(item.x, 0, 0);
+    jar.rotation.y = (Math.random() - 0.5) * 0.5;
+    jar.userData.item = item;
+
+    if (item.bay === 'wishlist') makeWishlist(jar, item.display);
+    if (item.bay === 'prototype') markPrototype(jar);
+
+    scene.add(jar);
+    jars.push(jar);
+  }
+  document.getElementById('load').classList.add('gone');
+}
+
+/* =====================================================================
+   SHELF TRIM
+
+   One definition drives three things so they can never disagree: the strip
+   texture, the light spill onto the jars, and the tint the smoke picks up.
+   Colour is a function of position along the shelf, 0 to 1.
+   ===================================================================== */
+const TRIM = { mode: 'off', solid: '#51EC43', a: '#51EC43', b: '#FF7A18',
+               speed: 0.30, glow: 0.70, phase: 0 };
+
+const _c1 = new THREE.Color(), _c2 = new THREE.Color(), _out = new THREE.Color();
+function trimColourAt(t) {
+  if (TRIM.mode === 'solid') return _out.set(TRIM.solid);
+  if (TRIM.mode === 'gradient') {
+    _c1.set(TRIM.a); _c2.set(TRIM.b);
+    return _out.copy(_c1).lerp(_c2, t);
+  }
+  if (TRIM.mode === 'rainbow') {
+    return _out.setHSL((((t * 0.85 + TRIM.phase) % 1) + 1) % 1, 0.85, 0.55);
+  }
+  return _out.set('#000000');
+}
+
+const STRIP_W = 560, STRIP_X = -34, STRIP_Z = 49.5;
+const stripCv = document.createElement('canvas');
+stripCv.width = 256; stripCv.height = 1;
+const stripCtx = stripCv.getContext('2d');
+const stripTex = new THREE.CanvasTexture(stripCv);
+stripTex.colorSpace = THREE.SRGBColorSpace;
+
+const strip = new THREE.Mesh(
+  new THREE.BoxGeometry(STRIP_W, 2.4, 1.2),
+  new THREE.MeshBasicMaterial({ map: stripTex, toneMapped: false }),
+);
+strip.position.set(STRIP_X, 1.7, STRIP_Z);
+strip.visible = false;
+scene.add(strip);
+
+/* Spill lights sample the SAME function as the strip, so a rainbow trim throws
+   rainbow light onto the jars instead of merely glowing at them. */
+const SPILL = [];
+for (let i = 0; i < 9; i++) {
+  const l = new THREE.PointLight(0xffffff, 0, 230, 2);
+  l.position.set(STRIP_X - STRIP_W / 2 + (i + 0.5) * (STRIP_W / 9), 10, STRIP_Z - 8);
+  l.visible = false;
+  scene.add(l);
+  SPILL.push(l);
+}
+
+function paintTrim() {
+  const on = TRIM.mode !== 'off';
+  strip.visible = on;
+  for (const l of SPILL) l.visible = on;
+  if (!on) return;
+  for (let x = 0; x < stripCv.width; x++) {
+    const c = trimColourAt(x / (stripCv.width - 1));
+    stripCtx.fillStyle = '#' + c.getHexString();
+    stripCtx.fillRect(x, 0, 1, 1);
+  }
+  stripTex.needsUpdate = true;
+  SPILL.forEach((l, i) => {
+    l.color.copy(trimColourAt((i + 0.5) / SPILL.length));
+    l.intensity = 28 * TRIM.glow;
+  });
+}
+
+/* =====================================================================
+   SMOKE
+
+   Billboard puffs on a procedural texture, so nothing is downloaded. Each
+   drifts, grows and fades on its own clock, then recycles. The tint is
+   sampled from the trim at the puff position, which is what makes smoke over
+   a lit shelf read as smoke rather than as grey sprites.
+   ===================================================================== */
+function puffTexture() {
+  const S = 128, cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const c = cv.getContext('2d');
+  const g = c.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  g.addColorStop(0.0, 'rgba(255,255,255,0.42)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0.16)');
+  g.addColorStop(1.0, 'rgba(255,255,255,0)');
+  c.fillStyle = g; c.fillRect(0, 0, S, S);
+  /* break the perfect circle up, or it reads as bokeh rather than smoke */
+  const img = c.getImageData(0, 0, S, S), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const x = (i / 4) % S, y = Math.floor(i / 4 / S);
+    const n = Math.sin(x * 0.21) * Math.cos(y * 0.17) + Math.sin((x + y) * 0.09);
+    d[i + 3] = Math.max(0, Math.min(255, d[i + 3] * (0.62 + n * 0.30)));
+  }
+  c.putImageData(img, 0, 0);
+  return new THREE.CanvasTexture(cv);
+}
+
+const SMOKE = { on: false, amount: 0.55, puffs: [] };
+const puffTex = puffTexture();
+const smokeGroup = new THREE.Group();
+smokeGroup.visible = false;
+scene.add(smokeGroup);
+const GREY = new THREE.Color(0xBFC6CE);
+
+for (let i = 0; i < 54; i++) {
+  const m = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: puffTex, transparent: true, depthWrite: false,
+    opacity: 0, color: 0xBFC6CE, toneMapped: false,
+  }));
+  const reset = (initial) => {
+    m.userData.x = STRIP_X + (Math.random() - 0.5) * 520;
+    m.userData.y = initial ? Math.random() * 90 : -6 + Math.random() * 12;
+    m.userData.z = (Math.random() - 0.5) * 90;
+    m.userData.vy = 3.5 + Math.random() * 7;
+    m.userData.drift = (Math.random() - 0.5) * 4;
+    m.userData.life = initial ? Math.random() * 8 : 0;
+    m.userData.span = 7 + Math.random() * 9;
+    m.userData.size = 42 + Math.random() * 76;
+  };
+  reset(true);
+  m.userData.reset = reset;
+  smokeGroup.add(m);
+  SMOKE.puffs.push(m);
+}
+
+const clock = new THREE.Clock();
+function stepFx(dt) {
+  if (TRIM.mode === 'rainbow') {
+    TRIM.phase = (TRIM.phase + dt * TRIM.speed * 0.35) % 1;
+    paintTrim();
+  }
+  if (!SMOKE.on) return;
+  for (const m of SMOKE.puffs) {
+    const u = m.userData;
+    u.life += dt;
+    if (u.life > u.span) u.reset(false);
+    u.y += u.vy * dt;
+    u.x += u.drift * dt;
+    const t = u.life / u.span;
+    m.position.set(u.x, u.y, u.z);
+    m.scale.setScalar(u.size * (0.7 + t * 0.8));
+    m.material.opacity = Math.sin(Math.min(1, t) * Math.PI) * 0.30 * SMOKE.amount;
+    if (TRIM.mode !== 'off') {
+      const tx = (u.x - (STRIP_X - STRIP_W / 2)) / STRIP_W;
+      m.material.color.copy(trimColourAt(Math.max(0, Math.min(1, tx)))).lerp(GREY, 0.55);
+    } else {
+      m.material.color.copy(GREY);
+    }
+  }
+}
+
+/* --------------------------------------------------------- the controls */
+const q = (id) => document.getElementById(id);
+
+q('smokeBtn').addEventListener('click', () => {
+  SMOKE.on = !SMOKE.on;
+  smokeGroup.visible = SMOKE.on;
+  q('smokeBtn').classList.toggle('on', SMOKE.on);
+  q('smokeBtn').textContent = SMOKE.on ? 'On' : 'Off';
+  q('smokeAmt').disabled = !SMOKE.on;
+});
+q('smokeAmt').addEventListener('input', (e) => { SMOKE.amount = +e.target.value; });
+
+/* The gate is a demo of the tier, not security. Real entitlement lives on the
+   server; this only shows what the two states look like. */
+/* Browsers restore checkbox state across a reload, so this control can come
+   back checked on a page load where nothing granted it. Entitlement must be
+   read from the account, never inherited from the previous session's DOM. */
+q('premium').checked = false;
+q('lock').classList.add('locked');
+
+q('premium').addEventListener('change', (e) => {
+  q('lock').classList.toggle('locked', !e.target.checked);
+  if (!e.target.checked) { setMode('off'); }
+});
+
+function setMode(mode) {
+  // pointer-events:none stops a real click but not a scripted one, so the CSS
+  // lock alone is not even a correct DEMO of the gate. This makes the tier
+  // behave the same down every path.
+  //
+  // It is still not security. Real entitlement is checked on the server; a
+  // client can always flip a boolean. What this buys is a demo that does not
+  // lie about how the tier behaves.
+  if (mode !== 'off' && !q('premium').checked) return;
+  TRIM.mode = mode;
+  for (const b of q('trimSeg').children) b.classList.toggle('on', b.dataset.mode === mode);
+  q('rowSolid').hidden = mode !== 'solid';
+  q('rowGrad').hidden = mode !== 'gradient';
+  q('rowSpeed').hidden = mode !== 'rainbow';
+  paintTrim();
+}
+for (const b of q('trimSeg').children) {
+  b.addEventListener('click', () => setMode(b.dataset.mode));
+}
+q('cSolid').addEventListener('input', (e) => { TRIM.solid = e.target.value; paintTrim(); });
+q('cA').addEventListener('input', (e) => { TRIM.a = e.target.value; paintTrim(); });
+q('cB').addEventListener('input', (e) => { TRIM.b = e.target.value; paintTrim(); });
+q('tSpeed').addEventListener('input', (e) => { TRIM.speed = +e.target.value; });
+q('tGlow').addEventListener('input', (e) => { TRIM.glow = +e.target.value; paintTrim(); });
+
+/* ------------------------------------------------------- bay captions */
+const bayEls = {};
+for (const [k, b] of Object.entries(BAYS)) {
+  const el = document.createElement('div');
+  el.className = 'bay ' + b.cls;
+  el.innerHTML = `<b>${b.label}</b><span>${b.sub}</span>`;
+  document.body.appendChild(el);
+  bayEls[k] = el;
+}
+const v = new THREE.Vector3();
+function placeCaptions() {
+  for (const [k, b] of Object.entries(BAYS)) {
+    v.set(b.x, -10, 58).project(camera);
+    const el = bayEls[k];
+    const behind = v.z > 1;
+    el.style.opacity = behind ? 0 : 1;
+    el.style.left = ((v.x * 0.5 + 0.5) * innerWidth) + 'px';
+    el.style.top = ((-v.y * 0.5 + 0.5) * innerHeight) + 'px';
+  }
+}
+
+/* ------------------------------------------------------------- picking */
+const ray = new THREE.Raycaster();
+const ptr = new THREE.Vector2();
+const card = document.getElementById('card');
+let picked = null;
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  ptr.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(ptr, camera);
+  const hit = ray.intersectObjects(jars, true)[0];
+  if (!hit) { card.classList.add('off'); picked = null; return; }
+  let root = hit.object;
+  while (root.parent && !root.userData.item) root = root.parent;
+  show(root.userData.item);
+});
+
+const $ = (id) => document.getElementById(id);
+function show(it) {
+  picked = it;
+  $('c-name').textContent = it.name;
+  $('c-strain').textContent = it.strain + '  ·  ' + it.brand;
+
+  // The badge slot shows PROVENANCE where there is one, and the SHELF KIND
+  // where there is not. Those are different claims, so they are styled
+  // differently: provenance is flat, shelf kind is swept.
+  const b = $('c-badge');
+  if (it.provenance === 'in_hand') {
+    b.className = 'badge hand'; b.innerHTML = '<i></i><span>captured in session</span>';
+  } else if (it.provenance === 'uploaded') {
+    b.className = 'badge up'; b.innerHTML = '<i></i><span>uploaded</span>';
+  } else if (it.bay === 'wishlist') {
+    b.className = 'badge grad wish'; b.innerHTML = '<i></i><span>wishlist</span>';
+  } else if (it.bay === 'prototype') {
+    b.className = 'badge grad proto'; b.innerHTML = '<i></i><span>prototype</span>';
+  } else {
+    b.className = 'badge none'; b.innerHTML = '<i></i><span>no provenance</span>';
+  }
+
+  $('c-shelf').textContent = BAYS[it.bay].label;
+  $('c-col').innerHTML = `<span class="chip" style="background:${it.display}"></span>${it.display}`;
+  $('c-cap').textContent = it.captured ?? 'n/a';
+  $('c-disp').textContent = it.display;
+
+  // the disclosure: delta between what the camera gave and what is shown
+  const note = $('c-note');
+  if (it.captured && it.display) {
+    const d = dE(toOk(it.captured), toOk(it.display));
+    $('c-edit').textContent = d < 0.002 ? 'none' : 'dE ' + d.toFixed(3);
+    note.className = 'note';
+    note.textContent = d < 0.002
+      ? 'Shown exactly as captured. No adjustment.'
+      : 'Colour adjusted from capture by dE ' + d.toFixed(3) + '. The original is kept and shown above.';
+  } else {
+    $('c-edit').textContent = 'n/a';
+    note.className = it.bay === 'prototype' ? 'note warn' : 'note';
+    // the badge now states the BAY, so the note must not claim there is none
+    note.textContent = it.bay === 'wishlist'
+      ? 'A wish list jar. You do not own it, so there is no provenance to state and the badge names the bay instead. It glows so the shelf reads without labels.'
+      : 'A prototype. Nobody ever owned this jar, so a provenance badge would be a lie and the badge names the bay instead. Excluded from public browse and from every count.';
+  }
+  card.classList.remove('off');
+}
+
+/* ---------------------------------------------------------------- loop */
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+(function loop() {
+  requestAnimationFrame(loop);
+  stepFx(Math.min(0.05, clock.getDelta()));
+  controls.update();
+  placeCaptions();
+  renderer.render(scene, camera);
+})();
+
+await build();
+window.__shelf = { scene, camera, jars, renderer, show, ROSTER, TRIM, SMOKE, setMode, paintTrim, trimColourAt };
+</script>
+</body>
+</html>

@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Capture — Meltshelf</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#08090B;--pane:#0F1114;
+  --green:#51EC43;--greenDim:#2C9A24;--greenGlow:rgba(81,236,67,.18);
+  --orange:#FF7A18;--orangeDim:#B4500C;
+  --silver:#EDF1F5;
+  --l1:var(--silver);--l2:rgba(237,241,245,.60);--l3:rgba(237,241,245,.32);
+  --line:rgba(237,241,245,.12);
+  --ease:cubic-bezier(.66,0,.01,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--l1);font-family:'Archivo',system-ui,sans-serif;display:flex}
+button{font:inherit;cursor:pointer;border-radius:3px;border:1px solid var(--line);
+  background:rgba(237,241,245,.05);color:var(--l1);padding:8px 12px;font-size:12px}
+button:hover{border-color:var(--green);background:var(--greenGlow)}
+button.primary{background:linear-gradient(96deg,var(--green),#8BFF52 55%,var(--orange));
+  color:#06210A;border:0;font-weight:700}
+
+/* ---------------- stage ---------------- */
+#stage{flex:1;position:relative;min-width:0;display:grid;place-items:center;
+  background:radial-gradient(ellipse at 50% 40%,#12151A,#08090B 70%);overflow:hidden}
+#shot{position:relative;line-height:0;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+#shot img,#shot video,#shot canvas{display:block;max-width:min(78vw,900px);max-height:82vh}
+#ring{position:absolute;inset:0;pointer-events:none}
+/* [hidden] only sets display:none from the UA sheet, and an ID selector with
+   display:grid beats it. Without this the empty state paints over the photo. */
+#empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:30px}
+[hidden]{display:none!important}
+#empty p{color:var(--l2);font-size:13px;line-height:1.7;max-width:380px}
+#empty b{color:var(--l1);display:block;font-size:16px;margin-bottom:10px}
+#tip{position:absolute;left:20px;bottom:16px;font-family:'IBM Plex Mono',monospace;
+  font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--l3)}
+
+/* ---------------- details drawer ---------------- */
+/* Full width, not a second column. Sat beside the 372px aside it got squeezed
+   to under 500px and the two panels fought each other. Adding details is its
+   own task, so it gets the whole screen and the capture panel waits. */
+#drawer{position:fixed;inset:0;z-index:30;background:var(--pane);
+  transform:translateX(102%);transition:transform .4s var(--ease);
+  overflow-y:auto;padding:0 0 70px}
+#drawer.on{transform:none}
+/* the bar stays reachable however far down you scroll */
+#dbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:14px;
+  padding:14px clamp(18px,4vw,40px);background:rgba(15,17,20,.94);
+  backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+#dbar h2{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--green);font-weight:500}
+#dbar .spacer{flex:1}
+#dbar .count{margin-right:4px}
+#dbody{padding:22px clamp(18px,4vw,40px) 0;max-width:1180px;margin:0 auto}
+#drawer .lede{font-size:12.5px;color:var(--l3);margin:0 0 6px;line-height:1.6;max-width:60ch}
+/* two columns once there is room, so 190 chips is not one long scroll */
+@media (min-width:1000px){
+  #dcols{display:grid;grid-template-columns:1fr 1fr;gap:0 clamp(28px,4vw,56px);
+    align-items:start}
+}
+.dsec{border-top:1px solid var(--line);padding:18px 0 6px}
+.dsec > h3{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--orange);margin-bottom:4px}
+.dsec > .hint{font-size:11.5px;color:var(--l3);margin-bottom:14px;line-height:1.55}
+.grp{margin-bottom:13px}
+.grp .gl{font-size:11px;color:var(--l2);margin-bottom:6px;display:flex;gap:7px;align-items:baseline}
+.grp .gl em{font-style:normal;font-size:10px;color:var(--l3)}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.ch{background:rgba(237,241,245,.05);border:1px solid var(--line);color:var(--l2);
+  border-radius:99px;padding:4px 10px;font:inherit;font-size:11.5px;cursor:pointer;
+  transition:all .16s var(--ease)}
+.ch:hover{border-color:rgba(237,241,245,.32)}
+.ch.on{background:var(--greenGlow);border-color:var(--green);color:var(--green)}
+.ch.on.o{background:rgba(255,122,24,.12);border-color:var(--orange);color:var(--orange)}
+.row2{display:flex;gap:9px;align-items:center;margin-bottom:9px;flex-wrap:wrap}
+.row2 label{flex:0 0 84px;font-size:11.5px;color:var(--l2)}
+.row2 select,.row2 input[type=text]{flex:1;min-width:140px;background:#0A0B0D;
+  border:1px solid var(--line);color:var(--l1);border-radius:3px;padding:7px 9px;
+  font:inherit;font-size:12px}
+.row2 select:focus,.row2 input:focus{outline:none;border-color:var(--green)}
+textarea{width:100%;min-height:104px;background:#0A0B0D;border:1px solid var(--line);
+  color:var(--l1);border-radius:4px;padding:11px;font:inherit;font-size:13px;
+  line-height:1.6;resize:vertical}
+textarea:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px var(--greenGlow)}
+.prompt{font-size:11.5px;color:var(--l3);margin-top:8px;font-style:italic}
+#find{width:100%;background:#0A0B0D;border:1px solid var(--line);color:var(--l1);
+  border-radius:3px;padding:8px 10px;font:inherit;font-size:12px;margin-bottom:13px}
+#find:focus{outline:none;border-color:var(--green)}
+.count{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--green)}
+@media (max-width:900px){#dbar{flex-wrap:wrap}}
+
+/* ---------------- panel ---------------- */
+aside{width:372px;flex:0 0 372px;background:var(--pane);border-left:1px solid var(--line);
+  overflow-y:auto;overflow-x:hidden;padding:18px 18px 40px}
+h1{font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--green);
+  font-family:'IBM Plex Mono',monospace;font-weight:500}
+.sub{font-size:11px;color:var(--l3);margin:4px 0 18px;line-height:1.6}
+fieldset{border:0;border-top:1px solid var(--line);padding:15px 0 4px;margin-top:8px}
+legend{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.24em;
+  text-transform:uppercase;color:var(--orange);padding-right:10px}
+.row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px}
+.row.tight{gap:5px}
+
+.badge{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:3px;
+  font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;border:1px solid}
+.badge.hand{color:var(--green);border-color:var(--green);background:var(--greenGlow)}
+.badge.up{color:var(--orange);border-color:rgba(255,122,24,.5);background:rgba(255,122,24,.08)}
+.badge.none{color:var(--l3);border-color:var(--line)}
+.badge i{width:6px;height:6px;border-radius:50%;background:currentColor;font-style:normal}
+
+.swatch{height:74px;border-radius:4px;border:1px solid var(--line);margin-bottom:10px;
+  display:grid;place-items:center;font-family:'IBM Plex Mono',monospace;font-size:13px;
+  letter-spacing:.14em;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.bands{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:10px}
+.bands div{height:34px;border-radius:3px;border:1px solid var(--line);position:relative}
+.bands span{position:absolute;left:0;right:0;bottom:-16px;text-align:center;
+  font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:.14em;color:var(--l3)}
+.bands{margin-bottom:26px}
+
+table{width:100%;border-collapse:collapse;font-size:12px}
+td{padding:5px 0;border-bottom:1px solid rgba(237,241,245,.06)}
+td:last-child{text-align:right;font-family:'IBM Plex Mono',monospace;color:var(--l2);font-size:11px}
+td b{font-weight:500;color:var(--l1)}
+.ok{color:var(--green)!important}
+.warn{color:var(--orange)!important}
+
+#preview{width:100%;height:230px;border:1px solid var(--line);border-radius:4px;
+  margin-top:6px;background:#08090B}
+#preview canvas{display:block;width:100%;height:100%}
+#out{margin-top:12px;font-family:'IBM Plex Mono',monospace;font-size:10px;
+  color:var(--l3);line-height:1.6;min-height:28px;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="shot" hidden>
+    <canvas id="frame"></canvas>
+    <svg id="ring"></svg>
+  </div>
+  <div id="empty">
+    <p><b>Nothing loaded</b>
+      Start the camera, or drop a photo anywhere on this panel to use the
+      upload path. Sample jars are in the sidebar.</p>
+  </div>
+  <div id="tip">Drag the ring to move · scroll to resize · shift-drag for the white point</div>
+</div>
+
+<aside>
+  <h1>Capture</h1>
+  <p class="sub">Frame the jar mouth in the ring. Colour is sampled from the pixels
+     inside it, in your browser. Nothing is uploaded.</p>
+
+  <fieldset><legend>Source</legend>
+    <div class="row">
+      <button id="cam" class="primary">Start camera</button>
+      <button id="pick">Choose photo</button>
+    </div>
+    <div class="row tight">
+      <!-- One sample, and it is our own render rather than somebody's product
+           photography. The buttons that used to sit here pointed at a samples
+           folder that is not deployed, so they would have 404'd in public. -->
+      <button data-sample="assets/sample-jar.jpg">Try a sample jar</button>
+    </div>
+    <div id="prov" class="badge none"><i></i><span>no source</span></div>
+  </fieldset>
+
+  <fieldset><legend>Sampled colour</legend>
+    <div class="swatch" id="sw">—</div>
+    <div class="bands">
+      <div id="b0"><span>SHADOW</span></div>
+      <div id="b1"><span>MIDTONE</span></div>
+      <div id="b2"><span>HIGHLIGHT</span></div>
+    </div>
+    <table>
+      <tr><td><b>color_captured</b></td><td id="t-hex">—</td></tr>
+      <tr><td>lightness <b>L</b></td><td id="t-L">—</td></tr>
+      <tr><td>chroma <b>C</b></td><td id="t-C">—</td></tr>
+      <tr><td>hue <b>h</b></td><td id="t-h">—</td></tr>
+      <tr><td>reads as</td><td id="t-hue">—</td></tr>
+      <tr><td>pixels sampled</td><td id="t-n">—</td></tr>
+      <tr><td>clipped highlights</td><td id="t-clip">—</td></tr>
+      <tr><td>white balance</td><td id="t-wb">—</td></tr>
+      <tr id="r-raw" hidden><td><b>as shot</b>, no white point</td><td id="t-raw">—</td></tr>
+      <tr id="r-killed" hidden><td>correction</td><td id="t-killed">—</td></tr>
+    </table>
+  </fieldset>
+
+  <fieldset><legend>Render preview</legend>
+    <div id="preview"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="details">Add details</button>
+      <button id="clearWb">Clear white point</button>
+    </div>
+    <p id="dsum" class="count" style="margin-top:4px"></p>
+    <div class="row" style="margin-top:6px">
+      <button id="save" class="primary">Log entry</button>
+    </div>
+    <div id="out"></div>
+  </fieldset>
+</aside>
+
+<div id="drawer">
+  <div id="dbar">
+    <h2>Details</h2>
+    <span class="spacer"></span>
+    <span class="count" id="dcount"></span>
+    <button id="dskip">Skip for now</button>
+    <button id="dclose" class="primary">Save details</button>
+  </div>
+  <div id="dbody">
+    <p class="lede">All optional. A jar with a photo and a strain is already a
+       valid jar. Skip the lot and nothing is missing.</p>
+    <div id="dcols">
+    <div>
+    <div class="dsec">
+    <h3>Aroma</h3>
+    <p class="hint">What the room smelled like when you opened it.</p>
+    <input id="find" type="text" placeholder="Search 190 notes, or type your own and press enter">
+    <div id="aromaGroups"></div>
+  </div>
+
+  <div class="dsec">
+    <h3>Flavour</h3>
+    <p class="hint">Not a second aroma list. Where it lands, what it turns into,
+       and what is left afterwards.</p>
+    <div id="phases"></div>
+    <div class="grp"><div class="gl">Mouthfeel</div><div class="chips" id="mouthfeel"></div></div>
+    <div class="grp"><div class="gl">Structure</div><div class="chips" id="structure"></div></div>
+    <div class="grp"><div class="gl">Retrohale <em>the bit people argue about</em></div>
+      <div class="chips" id="retrohale"></div></div>
+    <div class="row2"><label>Length</label><select id="flen"></select></div>
+    <div class="row2"><label>Intensity</label><select id="fint"></select></div>
+  </div>
+
+  </div><div>
+  <div class="dsec">
+    <h3>Terroir</h3>
+    <p class="hint">Mostly unknowable unless the washer told you, which is why it
+       is worth recording when it is known.</p>
+    <div class="row2"><label>Medium</label><select id="tmedium"></select></div>
+    <div class="row2"><label>Light</label><select id="tlight"></select></div>
+    <div class="row2"><label>Feed</label><select id="tfeed"></select></div>
+    <div class="row2"><label>Water</label><select id="twater"></select></div>
+    <div class="grp"><div class="gl">Handling</div><div class="chips" id="thandling"></div></div>
+  </div>
+
+  <div class="dsec">
+    <h3>Experience</h3>
+    <p class="hint">The part nobody else records, and the part people actually
+       read on someone else's shelf.</p>
+    <div class="row2"><label>Onset</label><select id="eonset"></select></div>
+    <div class="row2"><label>Duration</label><select id="edur"></select></div>
+    <div class="grp"><div class="gl">Effect</div><div class="chips" id="eeffect"></div></div>
+    <div class="grp"><div class="gl">Best for</div><div class="chips" id="ebest"></div></div>
+    <div class="grp"><div class="gl">Notes</div>
+      <textarea id="enotes" placeholder="However you want to put it."></textarea>
+      <p class="prompt" id="eprompt"></p>
+    </div>
+  </div>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/three.module.js",
+  "three/addons/": "./vendor/three/addons/",
+  "culori": "./vendor/culori/culori.mjs"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createResinCultureJarModel, createJarLights, LIGHTING } from './src/createJarModel.js';
+import { makeTemplatePack, CONFIG } from './src/labelArtTemplate.js';
+import { AROMA, FLAVOUR, TERROIR, EXPERIENCE, ALL_AROMA } from './src/taxonomy.js';
+import { converter, formatHex, differenceEuclidean } from 'culori';
+
+/* =====================================================================
+   COLOUR SCIENCE
+   culori 4.0.2, MIT. Verified against the OKLab spec's reference vectors
+   to within 6e-5 before it was trusted with anything.
+
+   Three things were wrong with the first version of this sampler and all
+   three came from doing the maths in sRGB:
+
+   1. AVERAGING IN GAMMA SPACE. sRGB values are gamma-encoded, so their
+      mean is not the mean of the light. It biases toward the darker
+      pixels. Every average now happens in OKLab.
+
+   2. Rec.601 LUMA (0.299/0.587/0.114) for sorting. That is a 1980s
+      broadcast formula. "Midtone" means perceptual lightness, which is
+      OKLab L.
+
+   3. SATURATION AS (max-min)/max. An sRGB hack whose value is not
+      comparable between hues. OKLCh chroma is perceptually uniform, so a
+      chroma of 0.08 means the same amount of colour on a gold as on a
+      blue.
+
+   Distance is plain Euclidean in OKLab, which IS the delta-E here: OKLab
+   was built so that straight-line distance is perceptually meaningful.
+   CIEDE2000 exists to patch CIELAB's non-uniformity and buys nothing once
+   you are in a uniform space.
+   ===================================================================== */
+const toOk = converter('oklab');
+const toOkLch = converter('oklch');
+const toRgb = converter('rgb');
+const dE = differenceEuclidean('oklab');
+
+/** sRGB 0-255 -> OKLab. */
+const okOf = (r, g, b) => toOk({ mode: 'rgb', r: r / 255, g: g / 255, b: b / 255 });
+/** OKLab -> #RRGGBB, gamut-clipped by culori. */
+const okHex = (c) => formatHex({ ...c, mode: 'oklab' }).toUpperCase();
+/** OKLab -> linear-light sRGB triple, for white balance. */
+function okToLinear(c) {
+  const rgb = toRgb({ ...c, mode: 'oklab' });
+  const lin = (v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+  return [lin(rgb.r), lin(rgb.g), lin(rgb.b)];
+}
+function linearToOk(lin) {
+  const enc = (v) => (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(Math.max(0, v), 1 / 2.4) - 0.055);
+  return toOk({ mode: 'rgb', r: enc(lin[0]), g: enc(lin[1]), b: enc(lin[2]) });
+}
+
+const $ = (id) => document.getElementById(id);
+const frame = $('frame'), fctx = frame.getContext('2d', { willReadFrequently: true });
+const ring = $('ring'), out = $('out');
+
+/* =====================================================================
+   STATE
+   ===================================================================== */
+const S = {
+  source: null,          // 'camera' | 'upload' | null
+  provenance: 'declared',
+  media: null,           // video or image element
+  // ring in IMAGE pixel coordinates, so it survives display scaling
+  ring: { x: 0, y: 0, r: 0 },
+  white: null,           // { x, y, r } neutral reference, or null
+  colour: null,
+};
+
+/* =====================================================================
+   SAMPLING
+   This is the whole "AI" of the product and it is arithmetic.
+
+   Pixels inside the ring are sorted by luminance and read in percentile
+   bands. The MIDTONE band is the jar's colour: the shadow band is the glass
+   and the gaps between, the highlight band is specular, and specular is the
+   colour of the LIGHT, not of the medicine. Averaging the lot together is
+   the classic mistake and it drags everything toward grey.
+   ===================================================================== */
+
+
+let clipped = 0, crushed = 0;
+function samplePixels(cx, cy, r) {
+  clipped = 0; crushed = 0;
+  const x0 = Math.max(0, Math.round(cx - r)), y0 = Math.max(0, Math.round(cy - r));
+  const w = Math.min(frame.width - x0, Math.round(r * 2));
+  const h = Math.min(frame.height - y0, Math.round(r * 2));
+  if (w <= 0 || h <= 0) return [];
+  const d = fctx.getImageData(x0, y0, w, h).data;
+  const px = [];
+  const r2 = r * r;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const dx = x0 + x - cx, dy = y0 + y - cy;
+      if (dx * dx + dy * dy > r2) continue;
+      const i = (y * w + x) * 4;
+      if (d[i + 3] < 200) continue;
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      // A clipped pixel has lost its colour: at 255 the sensor stopped
+      // recording hue and only recorded "bright". Averaging blown specular
+      // into the sample drags the whole reading toward white, which is most
+      // of why a plainly yellow jar was reporting khaki.
+      if (r >= 250 || g >= 250 || b >= 250) { clipped++; continue; }
+      if (r + g + b < 24) { crushed++; continue; }
+      px.push(okOf(r, g, b));
+    }
+  }
+  return px;
+}
+
+/**
+ * Percentile band by PERCEPTUAL lightness, averaged in OKLab.
+ * Returns an OKLab colour, not a byte triple.
+ */
+function band(px, lo, hi) {
+  if (!px.length) return { mode: 'oklab', l: 0, a: 0, b: 0 };
+  const a = px.slice().sort((p, q) => p.l - q.l);
+  const i0 = Math.floor(a.length * lo);
+  const s = a.slice(i0, Math.max(Math.floor(a.length * hi), i0 + 1));
+  let L = 0, A = 0, B = 0;
+  for (const c of s) { L += c.l; A += c.a; B += c.b; }
+  return { mode: 'oklab', l: L / s.length, a: A / s.length, b: B / s.length };
+}
+
+/**
+ * White balance from a neutral patch.
+ *
+ * Whatever the user marks as "this should be grey" gives per-channel gains.
+ * Without it the same jar shot in kitchen light and daylight returns two
+ * different colours, which would make the product's central claim false.
+ */
+/**
+ * Von Kries gains from the neutral patch, computed in LINEAR LIGHT.
+ *
+ * The first version scaled gamma-ENCODED values, which is wrong: a channel
+ * gain is a change in the amount of light, and gamma-encoded numbers are not
+ * proportional to light. Same idea as averaging in the wrong space, and it
+ * skewed every correction.
+ */
+function whiteGains() {
+  if (!S.white) return null;
+  const px = samplePixels(S.white.x, S.white.y, S.white.r);
+  if (px.length < 40) return null;
+  const n = okToLinear(band(px, 0.30, 0.80));
+  const mean = (n[0] + n[1] + n[2]) / 3;
+  if (mean < 0.004) return null;               // too dark to be a white point
+  return n.map((v) => mean / Math.max(1e-4, v));
+}
+
+
+
+function analyse() {
+  if (!S.media) return;
+  const px = samplePixels(S.ring.x, S.ring.y, S.ring.r);
+  if (px.length < 60) { out.textContent = 'Ring is off the image or too small.'; return; }
+
+  const nClipped = clipped;
+  const g = whiteGains();
+  // gains are applied to LIGHT, so round-trip through linear and back
+  const apply = (c) => {
+    if (!g) return c;
+    const lin = okToLinear(c);
+    return linearToOk([lin[0] * g[0], lin[1] * g[1], lin[2] * g[2]]);
+  };
+
+  const rawMid = band(px, 0.40, 0.70);
+  const shadow = apply(band(px, 0.05, 0.25));
+  const mid = apply(rawMid);
+  const high = apply(band(px, 0.85, 0.97));
+
+  // A white point placed on PRODUCT rather than on something neutral cancels
+  // the very colour you are trying to read. Pixels alone cannot distinguish a
+  // grey card under warm light from a yellow object under neutral light, so
+  // the tool does not guess: it shows both numbers and lets the eye decide.
+  const chromaOf = (c) => toOkLch({ ...c, mode: 'oklab' }).c || 0;
+  const rawC = chromaOf(rawMid), corrC = chromaOf(mid);
+  const killed = rawC > 0.01 ? (1 - corrC / rawC) * 100 : 0;
+  // straight-line distance in OKLab IS the perceptual delta here
+  const delta = dE({ ...rawMid, mode: 'oklab' }, { ...mid, mode: 'oklab' });
+
+  const lch = toOkLch({ ...mid, mode: 'oklab' });
+  const captured = okHex(mid);
+
+  S.colour = { captured, asShot: okHex(rawMid), shadow: okHex(shadow), high: okHex(high),
+               L: lch.l, C: lch.c || 0, h: lch.h ?? 0,
+               n: px.length, wb: !!g, clipped: nClipped, killed, delta };
+
+  $('sw').style.background = captured;
+  $('sw').style.color = lch.l > 0.62 ? '#06210A' : '#EDF1F5';
+  $('sw').textContent = captured;
+  $('b0').style.background = S.colour.shadow;
+  $('b1').style.background = captured;
+  $('b2').style.background = S.colour.high;
+  $('t-hex').textContent = captured;
+  $('t-L').textContent = (lch.l * 100).toFixed(1);
+  $('t-C').textContent = (lch.c || 0).toFixed(4);
+  $('t-h').textContent = (lch.h ?? 0).toFixed(0) + '°';
+  // OKLCh hue: ~90 is yellow, ~110-140 green, ~30-60 orange
+  const hh = lch.h ?? 0;
+  $('t-hue').textContent = (lch.c || 0) < 0.02 ? 'neutral'
+    : hh < 70 ? 'orange / amber' : hh < 100 ? 'gold / yellow'
+    : hh < 160 ? 'olive / green' : 'cool';
+  $('t-n').textContent = px.length.toLocaleString();
+  const wb = $('t-wb');
+  wb.textContent = g ? 'normalised' : 'as shot';
+  wb.className = g ? 'ok' : 'warn';
+  $('t-clip').textContent = nClipped ? nClipped.toLocaleString() + ' excluded' : 'none';
+  $('t-clip').className = nClipped > px.length * 0.25 ? 'warn' : '';
+
+  const row = $('r-raw');
+  if (g) {
+    row.hidden = false; $('r-killed').hidden = false;
+    $('t-raw').textContent = okHex(rawMid);
+    $('t-raw').style.color = okHex(rawMid);
+    const k = $('t-killed');
+    k.textContent = (killed > 0 ? '-' : '+') + Math.abs(killed).toFixed(0) + '% chroma, dE ' + delta.toFixed(3);
+    k.className = killed > 25 ? 'warn' : '';
+    out.textContent = killed > 25
+      ? 'That white point is removing ' + killed.toFixed(0) + '% of the chroma (dE ' + delta.toFixed(2) + '). If it is sitting on product rather than on something genuinely neutral, it is cancelling the colour you are trying to read. Clear it and compare.'
+      : '';
+  } else { row.hidden = true; $('r-killed').hidden = true; }
+
+  paintJar(S.colour.captured);
+  drawRing();
+}
+
+/* =====================================================================
+   RING
+   ===================================================================== */
+function drawRing() {
+  const box = frame.getBoundingClientRect();
+  const k = box.width / frame.width;              // image px -> screen px
+  ring.setAttribute('viewBox', `0 0 ${box.width} ${box.height}`);
+  ring.style.width = box.width + 'px';
+  ring.style.height = box.height + 'px';
+  const c = (o, cls) => `<circle cx="${o.x * k}" cy="${o.y * k}" r="${o.r * k}" class="${cls}"/>`;
+  ring.innerHTML = `
+    <defs><mask id="m"><rect width="100%" height="100%" fill="#fff"/>
+      <circle cx="${S.ring.x * k}" cy="${S.ring.y * k}" r="${S.ring.r * k}" fill="#000"/></mask></defs>
+    <rect width="100%" height="100%" fill="rgba(4,6,8,.55)" mask="url(#m)"/>
+    <circle cx="${S.ring.x * k}" cy="${S.ring.y * k}" r="${S.ring.r * k}"
+      fill="none" stroke="#51EC43" stroke-width="2"/>
+    <circle cx="${S.ring.x * k}" cy="${S.ring.y * k}" r="${S.ring.r * k - 7}"
+      fill="none" stroke="rgba(81,236,67,.30)" stroke-width="1" stroke-dasharray="5 7"/>
+    ${S.white ? `<circle cx="${S.white.x * k}" cy="${S.white.y * k}" r="${S.white.r * k}"
+      fill="none" stroke="#FF7A18" stroke-width="2" stroke-dasharray="4 4"/>` : ''}`;
+}
+
+function fitRing() {
+  S.ring = { x: frame.width / 2, y: frame.height / 2, r: Math.min(frame.width, frame.height) * 0.30 };
+}
+
+/* =====================================================================
+   SOURCES
+   ===================================================================== */
+function showStage() { $('shot').hidden = false; $('empty').hidden = true; }
+
+function setProvenance(kind) {
+  S.provenance = kind;
+  const el = $('prov');
+  if (kind === 'in_hand') { el.className = 'badge hand'; el.innerHTML = '<i></i><span>captured in session</span>'; }
+  else if (kind === 'uploaded') { el.className = 'badge up'; el.innerHTML = '<i></i><span>uploaded</span>'; }
+  else { el.className = 'badge none'; el.innerHTML = '<i></i><span>no source</span>'; }
+}
+
+async function useCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 } }, audio: false,
+    });
+    const v = document.createElement('video');
+    v.srcObject = stream; v.playsInline = true; v.muted = true;
+    await v.play();
+    S.media = v; S.source = 'camera';
+    frame.width = v.videoWidth; frame.height = v.videoHeight;
+    fitRing(); showStage(); setProvenance('in_hand');
+    (function pump() {
+      if (S.source !== 'camera') return;
+      fctx.drawImage(v, 0, 0, frame.width, frame.height);
+      drawRing();
+      requestAnimationFrame(pump);
+    })();
+    setInterval(() => { if (S.source === 'camera') analyse(); }, 400);
+    out.textContent = 'Live. This frame carries no EXIF, which is part of why it earns the higher tier.';
+  } catch (e) {
+    setProvenance('declared');
+    out.textContent = 'No camera available (' + e.name + '). Use a photo instead; it will be tagged as uploaded.';
+  }
+}
+
+async function useImage(src, label) {
+  S.source = 'upload';
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = src; });
+  S.media = img;
+  frame.width = img.naturalWidth; frame.height = img.naturalHeight;
+  fctx.drawImage(img, 0, 0);
+  fitRing(); showStage(); setProvenance('uploaded');
+  drawRing(); analyse();
+  out.textContent = (label || 'Photo') + ' loaded. Drag the ring over the medicine, then shift-drag a neutral area for white balance.';
+}
+
+$('cam').addEventListener('click', useCamera);
+$('pick').addEventListener('click', () => {
+  const i = document.createElement('input');
+  i.type = 'file'; i.accept = 'image/*';
+  i.onchange = () => { const f = i.files[0]; if (f) useImage(URL.createObjectURL(f), f.name); };
+  i.click();
+});
+for (const b of document.querySelectorAll('[data-sample]')) {
+  b.addEventListener('click', () => useImage(b.dataset.sample, b.textContent));
+}
+addEventListener('dragover', (e) => e.preventDefault());
+addEventListener('drop', (e) => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f && /^image\//.test(f.type)) useImage(URL.createObjectURL(f), f.name);
+});
+
+/* =====================================================================
+   RING INTERACTION
+   ===================================================================== */
+let drag = null;
+frame.addEventListener('pointerdown', (e) => {
+  const box = frame.getBoundingClientRect();
+  const k = frame.width / box.width;
+  const p = { x: (e.clientX - box.left) * k, y: (e.clientY - box.top) * k };
+  if (e.shiftKey) {
+    // shift places the neutral reference: "this patch should be grey"
+    S.white = { x: p.x, y: p.y, r: Math.max(10, frame.width * 0.03) };
+    drag = 'white';
+  } else drag = 'ring';
+  move(e);
+  frame.setPointerCapture(e.pointerId);
+});
+frame.addEventListener('pointermove', (e) => { if (drag) move(e); });
+addEventListener('pointerup', () => { drag = null; });
+function move(e) {
+  const box = frame.getBoundingClientRect();
+  const k = frame.width / box.width;
+  const p = { x: (e.clientX - box.left) * k, y: (e.clientY - box.top) * k };
+  if (drag === 'white') { S.white.x = p.x; S.white.y = p.y; }
+  else { S.ring.x = p.x; S.ring.y = p.y; }
+  drawRing(); if (S.source !== 'camera') analyse();
+}
+frame.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const t = e.shiftKey && S.white ? S.white : S.ring;
+  t.r = Math.max(8, Math.min(Math.min(frame.width, frame.height) / 2, t.r * (e.deltaY > 0 ? 0.94 : 1.06)));
+  drawRing(); if (S.source !== 'camera') analyse();
+}, { passive: false });
+$('clearWb').addEventListener('click', () => { S.white = null; drawRing(); analyse(); });
+addEventListener('resize', drawRing);
+
+/* =====================================================================
+   PREVIEW  — the payoff: sampled colour straight onto the jar
+   ===================================================================== */
+const pv = $('preview');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(pv.clientWidth, pv.clientHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.95;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+pv.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#08090B');
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const cam = new THREE.PerspectiveCamera(30, pv.clientWidth / pv.clientHeight, 1, 900);
+cam.position.set(0, 56, 104); cam.lookAt(0, 19, 0);
+scene.add(createJarLights(LIGHTING.studio));
+
+let jar = null, tPack = null;
+function paintJar(hexColour) {
+  if (!tPack) tPack = makeTemplatePack({ ...CONFIG, card: { ...CONFIG.card, show: false } });
+  if (jar) { jar.userData.sculptRuntime.dispose(); scene.remove(jar); }
+  jar = createResinCultureJarModel({
+    label: { ...tPack, contents: { color: hexColour, attenuation: hexColour, blockout: 0xcccccc },
+             lighting: LIGHTING.studio },
+    textureSize: 512,
+    anisotropy: renderer.capabilities.getMaxAnisotropy(),
+  });
+  jar.userData.sculptRuntime.setOpen(2);
+  scene.add(jar);
+  renderer.render(scene, cam);
+}
+(function loop() { requestAnimationFrame(loop); if (jar) renderer.render(scene, cam); })();
+
+/* =====================================================================
+   LOG  — the payload an entry would be written from
+   ===================================================================== */
+$('save').addEventListener('click', () => {
+  if (!S.colour) { out.textContent = 'Nothing sampled yet.'; return; }
+  const payload = {
+    provenance: S.provenance,
+    color_captured: S.colour.captured,
+    color_display: S.colour.captured,     // equal until someone edits it
+    oklch: { L: +S.colour.L.toFixed(4), C: +S.colour.C.toFixed(4), h: +S.colour.h.toFixed(1) },
+    wb_normalised: S.colour.wb,
+    sample_px: S.colour.n,
+    clipped_px: S.colour.clipped,
+    aroma: [...D.aroma, ...D.custom],
+    flavour: { ...D.flavour, mouthfeel: [...D.mouthfeel], structure: [...D.structure],
+               retrohale: [...D.retrohale], length: D.length, intensity: D.intensity },
+    terroir: { ...D.terroir, handling: [...D.terroir.handling] },
+    experience: { ...D.experience, effect: [...D.experience.effect],
+                  bestFor: [...D.experience.bestFor] },
+    notes: D.notes,
+  };
+  console.log('entry payload', payload);
+  out.innerHTML = 'Not wired to a database yet. Payload logged to the console:<br>'
+    + `<span style="color:var(--green)">${JSON.stringify(payload)}</span>`;
+});
+
+// no camera on this machine, so land in a usable state rather than an empty one
+navigator.mediaDevices?.enumerateDevices?.().then((d) => {
+  if (!d.some((x) => x.kind === 'videoinput')) {
+    $('cam').textContent = 'No camera found';
+    $('cam').classList.remove('primary');
+    out.textContent = 'No camera on this device. The upload path is the fallback, and it is also the real path for the uploaded provenance tier.';
+  }
+});
+
+/* =====================================================================
+   DETAILS
+
+   Every field is optional and every group takes a custom value, because a
+   closed list is a list that is already out of date. Selections are held as
+   Sets so the payload is order-free and de-duplicated.
+   ===================================================================== */
+const D = {
+  aroma: new Set(), custom: new Set(),
+  flavour: { attack: '', mid: '', finish: '' },
+  mouthfeel: new Set(), structure: new Set(), retrohale: new Set(),
+  length: '', intensity: 3,
+  terroir: { medium: '', light: '', feed: '', water: '', handling: new Set() },
+  experience: { onset: '', duration: '', effect: new Set(), bestFor: new Set() },
+  notes: '',
+};
+
+const el = (t, c, h) => { const n = document.createElement(t); if (c) n.className = c;
+  if (h !== undefined) n.textContent = h; return n; };
+
+/** A chip bound to a Set. Returns the node so callers can group them. */
+function chip(text, set, tone) {
+  const b = el('button', 'ch' + (tone ? ' ' + tone : ''), text);
+  b.addEventListener('click', () => {
+    if (set.has(text)) { set.delete(text); b.classList.remove('on'); }
+    else { set.add(text); b.classList.add('on'); }
+    summarise();
+  });
+  return b;
+}
+function fillChips(host, list, set, tone) {
+  const h = $(host); h.innerHTML = '';
+  for (const t of list) h.appendChild(chip(typeof t === 'string' ? t : t.label, set, tone));
+}
+function fillSelect(id, list, blank) {
+  const sel = $(id);
+  sel.innerHTML = `<option value="">${blank}</option>` + list.map((o) => {
+    const v = typeof o === 'string' ? o : (o.key ?? o.v);
+    const l = typeof o === 'string' ? o : o.label;
+    const hint = (typeof o === 'object' && o.hint) ? '  ·  ' + o.hint : '';
+    return `<option value="${v}">${l}${hint}</option>`;
+  }).join('');
+  return sel;
+}
+
+// aroma, grouped, with a live filter over roughly 190 notes
+const groupsHost = $('aromaGroups');
+function drawAroma(filter = '') {
+  const q = filter.trim().toLowerCase();
+  groupsHost.innerHTML = '';
+  for (const g of AROMA) {
+    const tags = q ? g.tags.filter((t) => t.includes(q)) : g.tags;
+    if (!tags.length) continue;
+    const wrap = el('div', 'grp');
+    const gl = el('div', 'gl');
+    gl.appendChild(el('span', null, g.group));
+    if (g.hint) gl.appendChild(el('em', null, g.hint));
+    wrap.appendChild(gl);
+    const chips = el('div', 'chips');
+    for (const t of tags) {
+      const b = chip(t, D.aroma);
+      if (D.aroma.has(t)) b.classList.add('on');
+      chips.appendChild(b);
+    }
+    wrap.appendChild(chips);
+    groupsHost.appendChild(wrap);
+  }
+  if (D.custom.size) {
+    const wrap = el('div', 'grp');
+    wrap.appendChild(el('div', 'gl', 'Yours'));
+    const chips = el('div', 'chips');
+    for (const t of D.custom) { const b = chip(t, D.custom, 'o'); b.classList.add('on'); chips.appendChild(b); }
+    wrap.appendChild(chips); groupsHost.appendChild(wrap);
+  }
+}
+$('find').addEventListener('input', (e) => drawAroma(e.target.value));
+$('find').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const v = e.target.value.trim().toLowerCase();
+  // anything not already in the vocabulary becomes yours
+  if (v && !ALL_AROMA.includes(v)) { D.custom.add(v); e.target.value = ''; }
+  drawAroma($('find').value); summarise();
+});
+
+// flavour phases share the aroma vocabulary, because you taste what you smell
+const dl = document.createElement('datalist');
+dl.id = 'aromaList';
+dl.innerHTML = ALL_AROMA.map((t) => `<option value="${t}">`).join('');
+document.body.appendChild(dl);
+$('phases').innerHTML = FLAVOUR.phases.map((p) => `
+  <div class="row2"><label>${p.label}</label>
+    <input type="text" list="aromaList" data-phase="${p.key}" placeholder="${p.hint}"></div>`).join('');
+for (const i of $('phases').querySelectorAll('input')) {
+  i.addEventListener('input', () => { D.flavour[i.dataset.phase] = i.value; summarise(); });
+}
+
+fillChips('mouthfeel', FLAVOUR.mouthfeel, D.mouthfeel);
+fillChips('structure', FLAVOUR.structure, D.structure);
+fillChips('retrohale', FLAVOUR.retrohale, D.retrohale);
+fillSelect('flen', FLAVOUR.length, 'Not noted').addEventListener('change', (e) => { D.length = e.target.value; summarise(); });
+fillSelect('fint', FLAVOUR.intensity, 'Not noted').addEventListener('change', (e) => { D.intensity = e.target.value; summarise(); });
+
+fillSelect('tmedium', TERROIR.medium, 'Unknown').addEventListener('change', (e) => { D.terroir.medium = e.target.value; summarise(); });
+fillSelect('tlight', TERROIR.light, 'Unknown').addEventListener('change', (e) => { D.terroir.light = e.target.value; summarise(); });
+fillSelect('tfeed', TERROIR.feed, 'Unknown').addEventListener('change', (e) => { D.terroir.feed = e.target.value; summarise(); });
+fillSelect('twater', TERROIR.water, 'Unknown').addEventListener('change', (e) => { D.terroir.water = e.target.value; summarise(); });
+fillChips('thandling', TERROIR.handling, D.terroir.handling);
+
+fillSelect('eonset', EXPERIENCE.onset, 'Not noted').addEventListener('change', (e) => { D.experience.onset = e.target.value; summarise(); });
+fillSelect('edur', EXPERIENCE.duration, 'Not noted').addEventListener('change', (e) => { D.experience.duration = e.target.value; summarise(); });
+fillChips('eeffect', EXPERIENCE.effect, D.experience.effect);
+fillChips('ebest', EXPERIENCE.bestFor, D.experience.bestFor);
+$('enotes').addEventListener('input', (e) => { D.notes = e.target.value; summarise(); });
+
+// rotate a prompt so the notes box is never a blank stare
+$('eprompt').textContent = EXPERIENCE.prompts[0];
+let promptI = 0;
+setInterval(() => {
+  promptI = (promptI + 1) % EXPERIENCE.prompts.length;
+  $('eprompt').textContent = EXPERIENCE.prompts[promptI];
+}, 7000);
+
+function countAll() {
+  return D.aroma.size + D.custom.size + D.mouthfeel.size + D.structure.size
+    + D.retrohale.size + D.terroir.handling.size + D.experience.effect.size
+    + D.experience.bestFor.size
+    + Object.values(D.flavour).filter(Boolean).length
+    + [D.length, D.terroir.medium, D.terroir.light, D.terroir.feed, D.terroir.water,
+       D.experience.onset, D.experience.duration].filter(Boolean).length
+    + (D.notes.trim() ? 1 : 0);
+}
+function summarise() {
+  const n = countAll();
+  const txt = n ? n + ' detail' + (n === 1 ? '' : 's') + ' added' : '';
+  $('dsum').textContent = txt;
+  $('dcount').textContent = txt;
+  $('dskip').textContent = n ? 'Close' : 'Skip for now';
+}
+
+$('details').addEventListener('click', () => $('drawer').classList.add('on'));
+$('dclose').addEventListener('click', () => $('drawer').classList.remove('on'));
+/* Skip closes without clearing. It means "not now", not "throw that away", and
+   silently binning what somebody already typed would be a nasty surprise. */
+$('dskip').addEventListener('click', () => $('drawer').classList.remove('on'));
+addEventListener('keydown', (e) => { if (e.key === 'Escape') $('drawer').classList.remove('on'); });
+
+drawAroma();
+summarise();
+
+window.__cap = { S, D, analyse, useImage, samplePixels, band, okOf, okHex, toOkLch, dE, countAll };
+</script>
+</body>
+</html>
