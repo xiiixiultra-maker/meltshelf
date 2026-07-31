@@ -924,6 +924,10 @@ $('waitlist').addEventListener('submit', async (e) => {
         _subject: 'Meltshelf early access signup',
         _template: 'table',
         _captcha: 'false',
+        // the confirmation the signer receives. Sent by the relay's own
+        // address, not hello@ - good enough for a waitlist, and it means a
+        // typo'd email surfaces immediately instead of at launch.
+        _autoresponse: 'You are on the Meltshelf early access list. One email when it opens, nothing else, ever. If this was not you, ignore this and nothing more will come.',
         _honey: $('hp').value,          // non-empty means a bot filled it
       }),
     });
