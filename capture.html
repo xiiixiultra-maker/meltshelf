@@ -40,6 +40,11 @@ button.primary{background:linear-gradient(96deg,var(--green),#8BFF52 55%,var(--o
 #empty b{color:var(--l1);display:block;font-size:16px;margin-bottom:10px}
 #tip{position:absolute;left:20px;bottom:16px;font-family:'IBM Plex Mono',monospace;
   font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--l3)}
+#toShelf{position:fixed;left:20px;top:16px;z-index:20;font-family:'IBM Plex Mono',monospace;
+  font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--l2);
+  text-decoration:none;background:rgba(8,9,11,.72);border:1px solid var(--line);
+  border-radius:3px;padding:7px 11px}
+#toShelf:hover{color:var(--green);border-color:var(--green)}
 
 /* ---------------- details drawer ---------------- */
 /* Full width, not a second column. Sat beside the 372px aside it got squeezed
@@ -139,6 +144,8 @@ td b{font-weight:500;color:var(--l1)}
 </style>
 </head>
 <body>
+
+<a id="toShelf" href="./app.html">← Your shelf</a>
 
 <div id="stage">
   <div id="shot" hidden>
@@ -287,7 +294,7 @@ import { converter, formatHex, differenceEuclidean } from 'culori';
 
 /* =====================================================================
    COLOUR SCIENCE
-   culori 4.0.2, MIT. Verified against the OKLab spec's reference vectors
+   culori 4.0.2, MIT. Checked against the OKLab spec's reference vectors
    to within 6e-5 before it was trusted with anything.
 
    Three things were wrong with the first version of this sampler and all

@@ -31,6 +31,9 @@ header .wrap{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
 .brand{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.26em;
   text-transform:uppercase;color:var(--l3)}
 .brand b{color:var(--green);font-weight:500}
+.shelfLink{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.26em;
+  text-transform:uppercase;color:var(--l3);transition:color .2s var(--ease)}
+.shelfLink:hover{color:var(--green)}
 .filters{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
 .chip{background:rgba(237,241,245,.05);border:1px solid var(--line);color:var(--l2);
   border-radius:99px;padding:6px 13px;font:inherit;font-size:11.5px;cursor:pointer;
@@ -90,6 +93,7 @@ footer a:hover{color:var(--green)}
 
 <header><div class="wrap">
   <a class="brand" href="./home.html"><b>Meltshelf</b> &nbsp;/&nbsp; Discover</a>
+  <a class="shelfLink" href="./app.html">Your shelf</a>
   <div class="filters" id="filters">
     <button class="chip trust" data-f="inhand">In hand only</button>
     <button class="chip" data-f="ice_water">Ice water</button>

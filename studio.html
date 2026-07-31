@@ -44,6 +44,7 @@ header .wrap{display:flex;justify-content:space-between;align-items:center;gap:1
   text-transform:uppercase;text-decoration:none;color:var(--l1);border:1px solid var(--line);
   padding:8px 14px;border-radius:3px}
 .top-cta:hover{border-color:var(--green);color:var(--green)}
+.ctas{display:flex;gap:8px;flex-wrap:wrap}
 
 /* ---------------- hero ---------------- */
 #hero{padding:clamp(50px,7vw,96px) 0 clamp(40px,6vw,72px)}
@@ -119,7 +120,10 @@ footer a:hover{color:var(--green)}
 
 <header><div class="wrap">
   <a class="brand" href="./home.html"><b>Meltshelf</b> &nbsp;/&nbsp; Jar Studio</a>
-  <a class="top-cta" href="#pricing">Pricing</a>
+  <div class="ctas">
+    <a class="top-cta" href="./app.html">Your shelf</a>
+    <a class="top-cta" href="#pricing">Pricing</a>
+  </div>
 </div></header>
 
 <section id="hero"><div class="wrap grid">

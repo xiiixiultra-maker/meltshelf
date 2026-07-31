@@ -123,6 +123,11 @@ body[data-sponsor] #sponsor.on{opacity:1}
 
 #rail{position:fixed;right:0;top:0;width:2px;height:100vh;z-index:7;background:var(--line)}
 #railFill{width:100%;height:0;background:linear-gradient(var(--green),var(--orange))}
+#toShelf{position:fixed;right:18px;top:18px;z-index:8;font-family:'IBM Plex Mono',monospace;
+  font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--l2);
+  text-decoration:none;background:rgba(8,9,11,.72);border:1px solid var(--line);
+  border-radius:3px;padding:7px 11px}
+#toShelf:hover{color:var(--green);border-color:var(--green)}
 
 /* bay captions, projected from the 3D positions once the shelf is revealed */
 .bay{position:fixed;z-index:5;transform:translate(-50%,0);text-align:center;pointer-events:none;
@@ -346,6 +351,8 @@ footer a:hover{color:var(--green)}
 
 <div id="cue">Scroll to open<span class="bar"></span></div>
 <div id="rail"><div id="railFill"></div></div>
+
+<a id="toShelf" href="./app.html">Your shelf →</a>
 
 <main id="after">
   <section class="wrap">

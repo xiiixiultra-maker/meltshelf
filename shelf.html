@@ -43,6 +43,10 @@ header{position:fixed;left:24px;top:22px;z-index:6}
 header h1{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.24em;
   text-transform:uppercase;color:var(--green);font-weight:500}
 header p{font-size:11px;color:var(--l3);margin-top:5px;max-width:270px;line-height:1.6}
+header .back{display:inline-block;margin-top:11px;font-family:'IBM Plex Mono',monospace;
+  font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--l3);
+  text-decoration:none}
+header .back:hover{color:var(--green)}
 
 #hint{position:fixed;left:24px;bottom:20px;z-index:6;font-family:'IBM Plex Mono',monospace;
   font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--l3)}
@@ -126,6 +130,7 @@ header p{font-size:11px;color:var(--l3);margin-top:5px;max-width:270px;line-heig
   <h1>The Shelf</h1>
   <p>Three bays, three rules. Provenance is earned on every account; the bays
      are what you paid for.</p>
+  <a class="back" href="./app.html">← Your shelf</a>
 </header>
 
 <div id="hint">Drag to orbit · scroll to zoom · click a jar</div>
