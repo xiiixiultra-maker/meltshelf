@@ -464,8 +464,18 @@ footer a:hover{color:var(--green)}
   </section>
   <section class="wrap cta">
     <h2>Start your shelf.</h2>
-    <form id="waitlist" novalidate>
-      <input type="email" id="email" placeholder="you@wherever" autocomplete="email">
+    <!-- Native POST, not fetch. The relay's AJAX endpoint accepts submissions
+         but silently drops the confirmation email to the signer - proven with
+         a fresh address. The documented HTML flow sends it, and _next bounces
+         straight back here with ?joined=1 so the page still owns the moment. -->
+    <form id="waitlist" action="https://formsubmit.co/hello@meltshelf.com" method="POST" novalidate>
+      <input type="email" id="email" name="email" placeholder="you@wherever" autocomplete="email">
+      <input type="hidden" name="_subject" value="Meltshelf early access signup">
+      <input type="hidden" name="_template" value="table">
+      <input type="hidden" name="_captcha" value="false">
+      <input type="hidden" name="_autoresponse"
+             value="You are on the Meltshelf early access list. One email when it opens, nothing else, ever. If this was not you, ignore this and nothing more will come.">
+      <input type="hidden" name="_next" value="https://meltshelf.com/?joined=1">
       <!-- honeypot: bots fill every field; a human never sees this one -->
       <input type="text" id="hp" name="_honey" tabindex="-1" autocomplete="off" aria-hidden="true"
              style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
@@ -904,43 +914,28 @@ $('smokeAmt').addEventListener('input', (e) => { SMOKE.amount = +e.target.value;
 const sponsorName = document.body.dataset.sponsor;
 if (sponsorName) $('sponsorName').textContent = sponsorName;
 
-/* The waitlist forwards straight into hello@meltshelf.com — no database, no
-   dashboard, no third-party list. On a product whose pitch is privacy, where
-   the FIRST address goes sets the tone: it goes to the same inbox the user
-   would reach by writing to us, and if the relay is ever down the fallback IS
-   writing to us. */
-$('waitlist').addEventListener('submit', async (e) => {
-  e.preventDefault();
+/* The waitlist forwards straight into hello@meltshelf.com - no database, no
+   dashboard, no third-party list. The submit is a native POST (see the form
+   markup for why); this handler only validates and sets the button state. */
+$('waitlist').addEventListener('submit', (e) => {
   const v = $('email').value.trim();
-  const fine = $('fine'), btn = $('joinBtn');
-  if (!/.+@.+\..+/.test(v)) { fine.textContent = 'That does not look like an email address.'; return; }
-  btn.disabled = true; btn.textContent = 'Joining…';
-  try {
-    const r = await fetch('https://formsubmit.co/ajax/hello@meltshelf.com', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({
-        email: v,
-        _subject: 'Meltshelf early access signup',
-        _template: 'table',
-        _captcha: 'false',
-        // the confirmation the signer receives. Sent by the relay's own
-        // address, not hello@ - good enough for a waitlist, and it means a
-        // typo'd email surfaces immediately instead of at launch.
-        _autoresponse: 'You are on the Meltshelf early access list. One email when it opens, nothing else, ever. If this was not you, ignore this and nothing more will come.',
-        _honey: $('hp').value,          // non-empty means a bot filled it
-      }),
-    });
-    const ok = r.ok && ((await r.json()).success ?? 'true') !== 'false';
-    if (!ok) throw new Error('relay refused');
-    $('waitlist').hidden = true;
-    fine.textContent = 'You’re in. One email when it opens, nothing else, ever.';
-  } catch {
-    btn.disabled = false; btn.textContent = 'Get early access';
-    fine.innerHTML = 'The signup relay hiccuped. Email us instead: ' +
-      '<a href="mailto:hello@meltshelf.com?subject=Early%20access" style="color:var(--green)">hello@meltshelf.com</a>';
+  if (!/.+@.+\..+/.test(v)) {
+    e.preventDefault();
+    $('fine').textContent = 'That does not look like an email address.';
+    return;
   }
+  $('joinBtn').disabled = true;
+  $('joinBtn').textContent = 'Joining…';
 });
+
+// the return leg of the native POST
+if (new URLSearchParams(location.search).get('joined')) {
+  $('waitlist').hidden = true;
+  $('fine').textContent = 'You’re in. A confirmation is on its way to your inbox.';
+  history.replaceState(null, '', location.pathname);   // refresh must not re-claim it
+  // the CTA lives at the bottom of a very long page; bring the confirmation to them
+  setTimeout(() => $('fine').scrollIntoView({ block: 'center' }), 400);
+}
 
 await build();
 if (reduced) { apply(0.9); renderer.render(scene, camera); }
