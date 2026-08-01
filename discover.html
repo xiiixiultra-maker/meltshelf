@@ -114,11 +114,7 @@ footer a:hover{color:var(--green)}
   <a class="brand" href="./"><b>Meltshelf</b> &nbsp;/&nbsp; Discover</a>
   <div class="filters" id="filters">
     <button class="chip trust" data-f="inhand">In hand only</button>
-    <button class="chip" data-f="ice_water">Ice water</button>
-    <button class="chip" data-f="dry_sift">Dry sift</button>
-    <button class="chip" data-f="rosin">Rosin</button>
-    <button class="chip" data-f="temple">Temple ball</button>
-    <button class="chip" data-f="living_soil">Living soil</button>
+    <span id="procChips"></span>
   </div>
 </div></header>
 
@@ -128,8 +124,8 @@ footer a:hover{color:var(--green)}
   <p>Every shelf here was listed on purpose. Sorted by what is actually in the
      jars, not by who posts most. You do not need an account to look, and
      nothing on this page asks you to make one.</p>
-  <p class="early"><b>One real shelf so far.</b> Meltshelf has not opened to
-     signups yet, so the only listed shelf is the one it was built on. The
+  <p class="early"><b id="realCount">Counting listed shelves.</b> Meltshelf
+     has not opened to signups yet, so there is not much here on purpose. The
      rest of this page shows what a card carries once other shelves land, and
      every one of those is marked as an example so nobody has to guess which
      is which.</p>
@@ -157,7 +153,9 @@ footer a:hover{color:var(--green)}
 } }
 </script>
 
+<script src="./vendor/supabase/supabase.umd.js"></script>
 <script type="module">
+import { db, configured } from './src/auth.js';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createResinCultureJarModel, createJarLights, CONTENTS, LIGHTING }
@@ -176,26 +174,66 @@ import { makeCharrasPack } from './src/labelArtCharras.js';
    the projection that feeds this page, so a public count and an owner's count
    are different numbers by design. The card shows what a stranger can see.
    ===================================================================== */
-const SHELVES = [
-  { handle: '@NastySaibot', title: 'Current rotation',
-    jars: ['sour-diesel-bx2','rodman'],
-    // Both jars state cold-cure premium live rosin, 90-139u on their own
-    // labels, so the tag is read off the product rather than assumed.
-    n: 2, inhand: 2, tags: ['rosin'], soil: false, real: true },
+/* =====================================================================
+   WHAT IS REAL AND WHAT IS AN EXAMPLE
 
+   Real shelves come from public_shelves and public_entries. Those views
+   decide what a stranger sees; this file cannot widen them. A wish list or a
+   prototype cannot appear here even if the rendering code asked for one,
+   because the projection does not emit them.
+
+   The examples below are fiction and say so on the card. They exist because
+   one real shelf does not show a visitor what a browse page is. They are
+   appended after everything real, so a real shelf is never pushed under an
+   invented one, and they disappear on their own once there are four.
+   ===================================================================== */
+const EXAMPLES = [
   { handle: '@coldroom', title: 'Winter rotation', jars: ['rodman','sour-diesel-bx2','charras'],
-    n: 14, inhand: 12, tags: ['ice_water','rosin'], soil: true },
+    n: 14, inhand: 12, processes: ['Ice water hash','Live rosin'], eg: true },
   { handle: '@sixstaronly', title: 'Full melt or nothing', jars: ['sour-diesel-bx2','charras','rodman'],
-    n: 31, inhand: 31, tags: ['ice_water','temple'], soil: true },
+    n: 31, inhand: 31, processes: ['Ice water hash'], eg: true },
   { handle: '@thewashhouse', title: 'What we ran this month', jars: ['charras','rodman','sour-diesel-bx2'],
-    n: 9, inhand: 6, tags: ['rosin','dry_sift'], soil: false },
+    n: 9, inhand: 6, processes: ['Live rosin','Dry sift'], eg: true },
   { handle: '@piatella.club', title: 'Pressed and patient', jars: ['rodman','charras','sour-diesel-bx2'],
-    n: 22, inhand: 15, tags: ['temple','dry_sift'], soil: true },
-  { handle: '@terpsonly', title: 'Nose first', jars: ['sour-diesel-bx2','rodman','charras'],
-    n: 7, inhand: 7, tags: ['rosin'], soil: false },
-  { handle: '@notill.hash', title: 'Living soil only', jars: ['charras','sour-diesel-bx2','rodman'],
-    n: 18, inhand: 11, tags: ['ice_water','living_soil'], soil: true },
+    n: 22, inhand: 15, processes: ['Temple ball','Dry sift'], eg: true },
 ];
+
+/* Counts used to be typed by hand, so they were always plural and always
+   agreed with the noun beside them. Now they are counted, one is reachable,
+   and "1 jars" turned up the first time a shelf had one listed. */
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** The real shelves, as the projection reports them. */
+async function loadShelves() {
+  if (!configured()) return [];
+  const c = db();
+  const [{ data: shelves, error: e1 }, { data: entries, error: e2 }] = await Promise.all([
+    c.from('public_shelves').select('*').order('last_listed', { ascending: false }),
+    c.from('public_entries').select('handle, name, pack, provenance, color_display'),
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+
+  const byHandle = {};
+  for (const e of entries ?? []) (byHandle[e.handle] ||= []).push(e);
+
+  return (shelves ?? []).map((sh) => ({
+    handle: '@' + (sh.display_name || sh.handle),
+    href: './shelf.html?public=1',
+    title: (sh.processes || []).join(' · ') || 'Current rotation',
+    // Pack names the built-in artwork. A jar captured from photographs has
+    // none yet, and gets the template mould tinted with its own colour, which
+    // is the honest fallback rather than borrowing somebody else's label.
+    jars: (byHandle[sh.handle] || []).map((e) => e.pack).filter(Boolean),
+    tints: (byHandle[sh.handle] || []).map((e) => e.color_display),
+    n: sh.jars,
+    inhand: sh.in_hand,
+    processes: sh.processes || [],
+    eg: false,
+  }));
+}
+
+let SHELVES = [];
 
 /* ---------------------------------------------------------------------
    THUMBNAILS
@@ -243,10 +281,13 @@ async function buildJars() {
   }
 }
 
-function thumbFor(keys) {
+function thumbFor(keys, tints) {
   const row = new THREE.Group();
-  keys.forEach((k, i) => {
-    const j = built[k].clone(true);
+  // A shelf whose jars have no built-in artwork still gets a thumbnail: the
+  // mould, tinted. Better an honest grey jar than somebody else's label.
+  const list = keys.length ? keys : ['sour-diesel-bx2'];
+  list.forEach((k, i) => {
+    const j = (built[k] || built['sour-diesel-bx2']).clone(true);
     j.position.set((i - (keys.length - 1) / 2) * 62, 0, 0);
     j.rotation.y = (i * 0.9) % 1.4 - 0.3;
     row.add(j);
@@ -264,12 +305,20 @@ function thumbFor(keys) {
 const grid = document.getElementById('grid');
 const active = new Set();
 
+/** One chip per process that actually exists across the real shelves. */
+function paintFilters() {
+  const seen = [...new Set(SHELVES.flatMap((s) => s.processes))].sort();
+  document.getElementById('procChips').innerHTML = seen
+    .map((p) => `<button class="chip" data-f="${p.replace(/"/g, '&quot;')}">${p}</button>`)
+    .join('');
+  wireChips();
+}
+
 function draw() {
   const list = SHELVES.filter((s) => {
     for (const f of active) {
       if (f === 'inhand') { if (s.inhand !== s.n) return false; continue; }
-      if (f === 'living_soil') { if (!s.soil) return false; continue; }
-      if (!s.tags.includes(f)) return false;
+      if (!s.processes.includes(f)) return false;
     }
     return true;
   });
@@ -278,23 +327,24 @@ function draw() {
     const pct = Math.round((s.inhand / s.n) * 100);
     // Only a real shelf is a link. An example that opened somebody else's
     // shelf would be teaching the visitor something false about the page.
-    const tag = s.real ? 'a' : 'div';
-    const attr = s.real ? ' href="./shelf.html?public=1"' : '';
-    return `<${tag} class="card ${s.real ? 'live' : 'eg'}"${attr}>
+    const real = !s.eg;
+    const tag = real ? 'a' : 'div';
+    const attr = real ? ` href="${s.href}"` : '';
+    return `<${tag} class="card ${real ? 'live' : 'eg'}"${attr}>
       <img class="shelfimg" src="${s.thumb}" alt="">
       <div class="meta">
-        <div class="who"><span class="handle">${s.handle}</span><span class="n">${s.n} jars</span></div>
+        <div class="who"><span class="handle">${s.handle}</span><span class="n">${plural(s.n, 'jar')}</span></div>
         <div class="title">${s.title}</div>
         <div class="tags">
-          ${s.real ? '' : '<span class="tag eg">Example</span>'}
+          ${real ? '' : '<span class="tag eg">Example</span>'}
           ${s.inhand === s.n ? '<span class="tag p">All in hand</span>' : ''}
-          ${s.tags.map((t) => `<span class="tag">${t.replace('_', ' ')}</span>`).join('')}
+          ${s.processes.map((t) => `<span class="tag">${t}</span>`).join('')}
         </div>
         <div class="bar">
           <i class="hand" style="width:${pct}%"></i><i class="up" style="width:${100 - pct}%"></i>
         </div>
         <div class="prov"><b>${s.inhand} captured in session</b> · ${s.n - s.inhand} uploaded</div>
-        ${s.real ? '<div class="open">Open this shelf →</div>' : ''}
+        ${real ? '<div class="open">Open this shelf →</div>' : ''}
       </div>
     </${tag}>`;
   }).join('') + `<a class="card invite" href="./">
@@ -305,20 +355,44 @@ function draw() {
   </a>`;
 }
 
-for (const b of document.querySelectorAll('#filters .chip')) {
-  b.addEventListener('click', () => {
-    const f = b.dataset.f;
-    if (active.has(f)) { active.delete(f); b.classList.remove('on'); }
-    else { active.add(f); b.classList.add('on'); }
-    draw();
-  });
+function wireChips() {
+  for (const b of document.querySelectorAll('#filters .chip')) {
+    if (b.dataset.wired) continue;
+    b.dataset.wired = '1';
+    b.addEventListener('click', () => {
+      const f = b.dataset.f;
+      if (active.has(f)) { active.delete(f); b.classList.remove('on'); }
+      else { active.add(f); b.classList.add('on'); }
+      draw();
+    });
+  }
 }
 
 await buildJars();
-for (const s of SHELVES) s.thumb = thumbFor(s.jars);
+
+let loadError = null;
+try {
+  const real = await loadShelves();
+  // Real first, always. Examples pad the page out; they never lead it.
+  SHELVES = [...real, ...EXAMPLES];
+  const n = real.length;
+  document.getElementById('realCount').textContent = n === 0
+    ? 'No shelves listed yet.'
+    : n === 1 ? 'One real shelf so far.' : `${n} real shelves so far.`;
+} catch (err) {
+  // A browse page that cannot reach the database should say so rather than
+  // quietly showing four invented shelves as though they were the content.
+  loadError = err;
+  SHELVES = [...EXAMPLES];
+  document.getElementById('realCount').textContent =
+    'Could not load listed shelves right now. The examples below are not real.';
+}
+
+for (const s of SHELVES) s.thumb = thumbFor(s.jars, s.tints);
+paintFilters();
 draw();
 
-window.__discover = { SHELVES, draw, active };
+window.__discover = { get SHELVES() { return SHELVES; }, draw, active, loadShelves, loadError };
 </script>
 </body>
 </html>
