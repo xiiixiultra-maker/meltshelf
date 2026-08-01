@@ -247,6 +247,8 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createResinCultureJarModel, createJarLights, LABELS, CONTENTS, LIGHTING, DIM }
   from './src/createJarModel.js';
 import { makeCharrasPack } from './src/labelArtCharras.js';
+import { createShelfFx } from './src/shelfFx.js';
+import { createOpener, prepareJar } from './src/jarOpen.js';
 import { converter, differenceEuclidean } from 'culori';
 
 const toOk = converter('oklab');
@@ -424,40 +426,7 @@ for (const dx of (Object.keys(SHOWN_BAYS).length > 1 ? [-52, 52] : [])) {
 /* ---------------------------------------------------------------- jars */
 const jars = [];
 
-/* =====================================================================
-   WHERE A CAP GOES WHEN IT COMES OFF
 
-   The jar model sets a removed cap down 58mm to the LEFT, every time. That is
-   right for the hero jar on the homepage, which stands alone. On a shelf the
-   jars are 68mm apart, so "58mm left" is almost exactly the next jar along,
-   and taking a lid off dropped it on its neighbour.
-
-   The reach is kept, because it is what carries the cap clear of its own jar.
-   Only the DIRECTION is decided here, per jar, toward whichever side has more
-   room, and the cap comes forward onto the front of the plank as well. Both
-   together are what stop it landing on anything:
-
-     x 58 toward the open side  ->  42mm of x from a 100mm neighbour
-     z 38 forward               ->  56mm centre to centre, clear of 51mm of radii
-
-   The offset is decided in WORLD space and then counter-rotated into the
-   jar's local frame, because every jar is stood at a small random angle. Set
-   as a local offset it inherits that angle, and the first version put
-   Rodman's cap 47mm from the next jar instead of the 56 it was aiming for.
-
-   The model keeps ownership of the lift, the tilt and the turn. This only
-   redirects the last part of the travel, after the thread has released.
-   ===================================================================== */
-const CAP_REST = { reach: 58, forward: 38 };
-function capRestFor(x, yaw) {
-  const others = SHOWN.map((r) => r.x).filter((v) => v !== x);
-  // No neighbour on a side means unlimited room on that side.
-  const gapL = Math.min(...others.filter((v) => v < x).map((v) => x - v), Infinity);
-  const gapR = Math.min(...others.filter((v) => v > x).map((v) => v - x), Infinity);
-  const wx = (gapR >= gapL ? 1 : -1) * CAP_REST.reach, wz = CAP_REST.forward;
-  const c = Math.cos(yaw), s = Math.sin(yaw);
-  return { x: c * wx - s * wz, z: s * wx + c * wz };   // world -> local, about Y
-}
 
 /** Wish-list jars glow from inside. Material, not a badge: the shelf should
  *  read at a glance without labels, and a glowing jar says "not mine yet". */
@@ -528,170 +497,42 @@ async function build() {
 
     // Where this jar's cap goes when it comes off. build() runs after
     // setOpen(0), so the lid is at its home transform and safe to record.
-    jar.userData.lid = jar.getObjectByName('lid-assembly');
-    if (jar.userData.lid) jar.userData.capHome = jar.userData.lid.position.clone();
-    jar.userData.rest = capRestFor(item.x, jar.rotation.y);
+    // Recorded by the module, so this page and app.html cannot disagree
+    // about where a lid belongs. Deferred until every jar exists: the
+    // direction depends on which side has a neighbour.
+    jar.userData.needsPrepare = true;
 
     scene.add(jar);
     jars.push(jar);
   }
+
+  const xs = jars.map((j) => j.position.x);
+  for (const j of jars) prepareJar(j, xs);
+
   document.getElementById('load').classList.add('gone');
 }
 
 /* =====================================================================
-   SHELF TRIM
+   TRIM AND SMOKE
 
-   One definition drives three things so they can never disagree: the strip
-   texture, the light spill onto the jars, and the tint the smoke picks up.
-   Colour is a function of position along the shelf, 0 to 1.
+   Shared with app.html through src/shelfFx.js. This page used to hold the
+   original and app.html a copy of it, which meant the public demo and a real
+   shelf could light differently. The names below are pulled off the module so
+   every control handler further down keeps talking to TRIM and SMOKE exactly
+   as it did.
    ===================================================================== */
-const TRIM = { mode: 'off', solid: '#51EC43', a: '#51EC43', b: '#FF7A18',
-               speed: 0.30, glow: 0.70, phase: 0 };
-
-const _c1 = new THREE.Color(), _c2 = new THREE.Color(), _out = new THREE.Color();
-function trimColourAt(t) {
-  if (TRIM.mode === 'solid') return _out.set(TRIM.solid);
-  if (TRIM.mode === 'gradient') {
-    _c1.set(TRIM.a); _c2.set(TRIM.b);
-    return _out.copy(_c1).lerp(_c2, t);
-  }
-  if (TRIM.mode === 'rainbow') {
-    return _out.setHSL((((t * 0.85 + TRIM.phase) % 1) + 1) % 1, 0.85, 0.55);
-  }
-  return _out.set('#000000');
-}
-
-const STRIP_W = 560, STRIP_X = -34, STRIP_Z = 66.5;   // rides the plank's front lip
-const stripCv = document.createElement('canvas');
-stripCv.width = 256; stripCv.height = 1;
-const stripCtx = stripCv.getContext('2d');
-const stripTex = new THREE.CanvasTexture(stripCv);
-stripTex.colorSpace = THREE.SRGBColorSpace;
-
-const strip = new THREE.Mesh(
-  new THREE.BoxGeometry(STRIP_W, 2.4, 1.2),
-  new THREE.MeshBasicMaterial({ map: stripTex, toneMapped: false }),
-);
-strip.position.set(STRIP_X, 1.7, STRIP_Z);
-strip.visible = false;
-scene.add(strip);
-
-/* Spill lights sample the SAME function as the strip, so a rainbow trim throws
-   rainbow light onto the jars instead of merely glowing at them. */
-const SPILL = [];
-for (let i = 0; i < 9; i++) {
-  const l = new THREE.PointLight(0xffffff, 0, 230, 2);
-  l.position.set(STRIP_X - STRIP_W / 2 + (i + 0.5) * (STRIP_W / 9), 10, STRIP_Z - 8);
-  l.visible = false;
-  scene.add(l);
-  SPILL.push(l);
-}
-
-function paintTrim() {
-  const on = TRIM.mode !== 'off';
-  strip.visible = on;
-  for (const l of SPILL) l.visible = on;
-  if (!on) return;
-  for (let x = 0; x < stripCv.width; x++) {
-    const c = trimColourAt(x / (stripCv.width - 1));
-    stripCtx.fillStyle = '#' + c.getHexString();
-    stripCtx.fillRect(x, 0, 1, 1);
-  }
-  stripTex.needsUpdate = true;
-  SPILL.forEach((l, i) => {
-    l.color.copy(trimColourAt((i + 0.5) / SPILL.length));
-    l.intensity = 28 * TRIM.glow;
-  });
-}
-
-/* =====================================================================
-   SMOKE
-
-   Billboard puffs on a procedural texture, so nothing is downloaded. Each
-   drifts, grows and fades on its own clock, then recycles. The tint is
-   sampled from the trim at the puff position, which is what makes smoke over
-   a lit shelf read as smoke rather than as grey sprites.
-   ===================================================================== */
-function puffTexture() {
-  const S = 128, cv = document.createElement('canvas');
-  cv.width = cv.height = S;
-  const c = cv.getContext('2d');
-  const g = c.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-  g.addColorStop(0.0, 'rgba(255,255,255,0.42)');
-  g.addColorStop(0.45, 'rgba(255,255,255,0.16)');
-  g.addColorStop(1.0, 'rgba(255,255,255,0)');
-  c.fillStyle = g; c.fillRect(0, 0, S, S);
-  /* break the perfect circle up, or it reads as bokeh rather than smoke */
-  const img = c.getImageData(0, 0, S, S), d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const x = (i / 4) % S, y = Math.floor(i / 4 / S);
-    const n = Math.sin(x * 0.21) * Math.cos(y * 0.17) + Math.sin((x + y) * 0.09);
-    d[i + 3] = Math.max(0, Math.min(255, d[i + 3] * (0.62 + n * 0.30)));
-  }
-  c.putImageData(img, 0, 0);
-  return new THREE.CanvasTexture(cv);
-}
-
-const SMOKE = { on: false, amount: 0.55, puffs: [] };
-const puffTex = puffTexture();
-const smokeGroup = new THREE.Group();
-smokeGroup.visible = false;
-scene.add(smokeGroup);
-const GREY = new THREE.Color(0xBFC6CE);
-
-for (let i = 0; i < 54; i++) {
-  const m = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: puffTex, transparent: true, depthWrite: false,
-    opacity: 0, color: 0xBFC6CE, toneMapped: false,
-  }));
-  const reset = (initial) => {
-    m.userData.x = STRIP_X + (Math.random() - 0.5) * 520;
-    m.userData.y = initial ? Math.random() * 90 : -6 + Math.random() * 12;
-    m.userData.z = (Math.random() - 0.5) * 90;
-    m.userData.vy = 3.5 + Math.random() * 7;
-    m.userData.drift = (Math.random() - 0.5) * 4;
-    m.userData.life = initial ? Math.random() * 8 : 0;
-    m.userData.span = 7 + Math.random() * 9;
-    m.userData.size = 42 + Math.random() * 76;
-  };
-  reset(true);
-  m.userData.reset = reset;
-  smokeGroup.add(m);
-  SMOKE.puffs.push(m);
-}
-
+const FX = createShelfFx({ THREE, scene });
+const { TRIM, SMOKE, paintTrim, trimColourAt } = FX;
 const clock = new THREE.Clock();
-function stepFx(dt) {
-  if (TRIM.mode === 'rainbow') {
-    TRIM.phase = (TRIM.phase + dt * TRIM.speed * 0.35) % 1;
-    paintTrim();
-  }
-  if (!SMOKE.on) return;
-  for (const m of SMOKE.puffs) {
-    const u = m.userData;
-    u.life += dt;
-    if (u.life > u.span) u.reset(false);
-    u.y += u.vy * dt;
-    u.x += u.drift * dt;
-    const t = u.life / u.span;
-    m.position.set(u.x, u.y, u.z);
-    m.scale.setScalar(u.size * (0.7 + t * 0.8));
-    m.material.opacity = Math.sin(Math.min(1, t) * Math.PI) * 0.30 * SMOKE.amount;
-    if (TRIM.mode !== 'off') {
-      const tx = (u.x - (STRIP_X - STRIP_W / 2)) / STRIP_W;
-      m.material.color.copy(trimColourAt(Math.max(0, Math.min(1, tx)))).lerp(GREY, 0.55);
-    } else {
-      m.material.color.copy(GREY);
-    }
-  }
-}
 
 /* --------------------------------------------------------- the controls */
 const q = (id) => document.getElementById(id);
 
 q('smokeBtn').addEventListener('click', () => {
   SMOKE.on = !SMOKE.on;
-  smokeGroup.visible = SMOKE.on;
+  // Visibility is the module's job now: it follows SMOKE.on every frame in
+  // step(). smokeGroup was a local of the block this page used to own, and
+  // reaching for it here threw on the first toggle.
   q('smokeBtn').classList.toggle('on', SMOKE.on);
   q('smokeBtn').textContent = SMOKE.on ? 'On' : 'Off';
   q('smokeAmt').disabled = !SMOKE.on;
@@ -840,51 +681,15 @@ function show(it) {
 /* =====================================================================
    OPENING A JAR
 
-   The cap is on a real thread, so "open" is not a swap to a second model:
-   setOpen drives rise and rotation off one shared pitch and the cap cannot
-   lift without turning. 0 is closed, 1 is the thread released, 2 is set
-   aside, and the tween runs the whole way so the turn is legible.
-
-   Each jar owns its own rAF handle. With one shared handle, opening a second
-   jar cancelled the first one's tween mid-travel and left a cap floating at
-   whatever height it had reached.
+   Shared with app.html through src/jarOpen.js. The tween, the coupled screw
+   and the cap-resting placement all live there; what stays here is the card,
+   because the two pages show different things around the same jar.
    ===================================================================== */
-const OPEN_T = 2.0, OPEN_MS = 900;
-let openJar = null;
-
+const OPENER = createOpener();
 const jarFor = (it) => jars.find((j) => j.userData.item === it);
-const ease = (t) => t * t * (3 - 2 * t);
-
-function tweenOpen(jar, to) {
-  if (!jar) return;
-  const rt = jar.userData.sculptRuntime;
-  cancelAnimationFrame(jar.userData.openAnim);
-  const from = rt.openAmount ?? 0;
-  if (Math.abs(to - from) < 0.001) return;
-  const t0 = performance.now();
-  (function step(now) {
-    const k = Math.min(1, (now - t0) / OPEN_MS);
-    const v = from + (to - from) * ease(k);
-    rt.setOpen(v);
-    placeCap(jar, v);
-    if (k < 1) jar.userData.openAnim = requestAnimationFrame(step);
-  })(performance.now());
-}
-
-/** Redirect the set-aside leg of the travel. Runs after setOpen, which writes
- *  x and z itself, so this has to overwrite rather than offset. The easing
- *  matches the model's so the cap does not change speed halfway across. */
-function placeCap(jar, v) {
-  const lid = jar.userData.lid;
-  if (!lid) return;
-  const free = Math.max(0, Math.min(1, v - 1));
-  const e = free * free * (3 - 2 * free);
-  lid.position.x = jar.userData.capHome.x + e * jar.userData.rest.x;
-  lid.position.z = jar.userData.capHome.z + e * jar.userData.rest.z;
-}
 
 function syncOpenUI(jar) {
-  const isOpen = !!jar?.userData.wantOpen;
+  const isOpen = OPENER.isOpen(jar);
   const btn = $('c-open');
   btn.textContent = isOpen ? 'Close jar' : 'Open jar';
   btn.classList.toggle('shut', isOpen);
@@ -901,16 +706,7 @@ function syncOpenUI(jar) {
 $('c-open').addEventListener('click', () => {
   const jar = jarFor(picked);
   if (!jar) return;
-  const next = !jar.userData.wantOpen;
-  // One open jar at a time. Two open jars on a shelf reads as a bug, not a
-  // feature, and the cap you set down stops belonging to anything.
-  if (next && openJar && openJar !== jar) {
-    openJar.userData.wantOpen = false;
-    tweenOpen(openJar, 0);
-  }
-  jar.userData.wantOpen = next;
-  openJar = next ? jar : null;
-  tweenOpen(jar, next ? OPEN_T : 0);
+  OPENER.toggle(jar);      // one open jar at a time is the module's rule
   syncOpenUI(jar);
 });
 
@@ -923,7 +719,7 @@ addEventListener('resize', () => {
 
 (function loop() {
   requestAnimationFrame(loop);
-  stepFx(Math.min(0.05, clock.getDelta()));
+  FX.step(Math.min(0.05, clock.getDelta()));
   controls.update();
   placeCaptions();
   renderer.render(scene, camera);
@@ -948,7 +744,7 @@ window.__shelf = {
   scene, camera, jars, renderer, PUBLIC, SHOWN,
   ROSTER: PUBLIC ? SHOWN : ROSTER,
   show: (it) => (PUBLIC && !SHOWN.includes(it)) ? undefined : show(it),
-  TRIM, SMOKE, setMode, paintTrim, trimColourAt, tweenOpen, jarFor,
+  TRIM, SMOKE, setMode, paintTrim, trimColourAt, OPENER, jarFor, FX,
 };
 </script>
 </body>
