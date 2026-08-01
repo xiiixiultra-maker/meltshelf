@@ -546,7 +546,7 @@ import { createResinCultureJarModel, createJarLights, LIGHTING } from './src/cre
 import { createSleeveJarModel, SLEEVE_DIM } from './src/createSleeveJarModel.js';
 import { makeTemplatePack, CONFIG } from './src/labelArtTemplate.js';
 import { AROMA, FLAVOUR, TERROIR, EXPERIENCE, ALL_AROMA } from './src/taxonomy.js';
-import { stitchWrap, TURNS } from './src/stitchWrap.js';
+import { stitchWrap, splitJarWrap, FULL_ASPECT, TURNS } from './src/stitchWrap.js';
 import { WRAP } from './src/labelArtTemplate.js';
 import { converter, formatHex, differenceEuclidean } from 'culori';
 
@@ -1533,14 +1533,19 @@ cam.position.set(0, 56, 104); cam.lookAt(0, 19, 0);
 scene.add(createJarLights(LIGHTING.studio));
 
 let jar = null, tPack = null;
-function paintJar(hexColour, art, base, capTop) {
+function paintJar(hexColour, art, base, capTop, skirt) {
   // With artwork we rebuild the pack every time: the wrap IS the pack, so a
   // cached one would keep painting the previous session's label.
   // The sleeve jar takes the same pack: one wrap, one top, one base. That is
   // the whole reason both factories share an options shape.
   const pack = art
     ? makeTemplatePack({ ...CONFIG, name: 'Captured jar',
+                         // Smooth black glass. Grip ribs are a design choice
+                         // that belongs to an invented jar, not to a
+                         // photograph of somebody's real one.
+                         cap: { ...CONFIG.cap, knurl: false },
                          art: { body: art,
+                                ...(skirt ? { skirt } : {}),
                                 ...(base ? { bottom: base } : {}),
                                 ...(capTop ? { top: capTop } : {}) } })
     : (tPack ||= makeTemplatePack({ ...CONFIG, card: { ...CONFIG.card, show: false } }));
@@ -1590,12 +1595,20 @@ $('generate').addEventListener('click', async () => {
     } else {
         // stitchWrap divides the circumference by however many shots it is
       // given, so four and six both work with no special casing.
-      CAP.wrap = stitchWrap(CAP.outside, { width: TARGET.w, aspect: WRAP.body.aspect });
+      // FULL jar, not the body band. The guide box was the whole jar, so
+      // asking for body aspect squashed 42mm of jar into 21.8mm of label.
+      CAP.wrap = stitchWrap(CAP.outside, { width: TARGET.w, aspect: FULL_ASPECT });
     }
     const art = await createImageBitmap(CAP.wrap);
     const base = CAP.bottom ? await createImageBitmap(CAP.bottom) : null;
     const cap = CAP.top ? await createImageBitmap(CAP.top) : null;
-    paintJar(S.colour.captured, art, base, cap);
+    // A full-jar wrap is cut at the seam so the label splits when the lid
+    // turns. The artwork route supplies a flat label, which is the body band
+    // already, so it is not cut.
+    const bands = CAP.route === 'photo' ? splitJarWrap(CAP.wrap) : null;
+    const skirt = bands ? await createImageBitmap(bands.skirt) : null;
+    const bodyArt = bands ? await createImageBitmap(bands.body) : art;
+    paintJar(S.colour.captured, bodyArt, base, cap, skirt);
     showResult();
     out.textContent = (CAP.route === 'artwork'
       ? 'Generated from your label artwork and one inside shot.'

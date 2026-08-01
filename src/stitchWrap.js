@@ -291,6 +291,69 @@ export function stitchWrap(shots, opts = {}) {
   return out;
 }
 
+/* =====================================================================
+   SPLITTING ONE PHOTOGRAPH ACROSS A JAR THAT COMES APART
+
+   A printed label runs over the whole jar and is CUT by the seam, so it
+   splits when you unscrew the lid. The Resin Culture and Charras jars are
+   built that way and it is the thing that makes a jar read as a real object
+   rather than a decal.
+
+   The renderer wants that as two textures, because the cap and the body are
+   two meshes that move independently. So a full-jar photograph has to be cut
+   at exactly the height the glass is cut at.
+
+   The numbers are the jar's, not a guess:
+
+     H_TOTAL   42.00   the whole jar
+     seam      23.65   where the cap parts from the body
+     body      1.60 to 23.40   printed band below the seam
+     skirt    23.75 to 39.15   printed band above it
+
+   Which leaves 1.6mm of bare black glass at the heel and 2.85mm at the crown,
+   because that is how these jars are actually printed: the label does not run
+   to the edges.
+
+   THE BUG THIS REPLACES: capture asked stitchWrap for a wrap at BODY aspect,
+   7.194:1, which is the proportion of the band BELOW the seam. But the guide
+   box being photographed was the whole jar. So 42mm of jar was squashed into
+   21.8mm of band, the label sat compressed into the bottom half, and the cap
+   fell back to the template's own drawn art complete with its grip ribs.
+   ===================================================================== */
+export const JAR = {
+  H_TOTAL: 42.0,
+  body:  { lo: 1.60,  hi: 23.40, aspect: 7.194 },
+  skirt: { lo: 23.75, hi: 39.15, aspect: 10.224 },
+};
+
+/** Circumference over height. What a photograph of a whole jar unwraps to. */
+export const FULL_ASPECT = (2 * Math.PI * 25.0) / JAR.H_TOTAL;   // 3.74
+
+/**
+ * Cut a full-jar wrap into the two bands the renderer needs.
+ *
+ * @param {CanvasImageSource & {width:number, height:number}} full
+ *        A wrap of the ENTIRE jar, top edge at the crown, bottom at the heel.
+ */
+export function splitJarWrap(full) {
+  const H = JAR.H_TOTAL;
+  // Millimetres from the heel become rows from the TOP of the image.
+  const band = (b) => {
+    const vTop = (H - b.hi) / H;
+    const vBot = (H - b.lo) / H;
+    const sy = Math.round(vTop * full.height);
+    const sh = Math.max(1, Math.round((vBot - vTop) * full.height));
+    const out = mk(full.width, Math.max(1, Math.round(full.width / b.aspect)));
+    // Source and destination are already the same proportion, so this is a
+    // resample, not a stretch. If it ever stretches, one of the constants
+    // above has drifted from the model.
+    out.getContext('2d').drawImage(full, 0, sy, full.width, sh,
+                                   0, 0, out.width, out.height);
+    return out;
+  };
+  return { body: band(JAR.body), skirt: band(JAR.skirt) };
+}
+
 /**
  * The guide the capture screen draws, and the rect the stitcher expects, are
  * the same rectangle in two coordinate systems. Keeping the conversion here
