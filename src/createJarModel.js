@@ -848,6 +848,49 @@ export function createResinCultureJarModel(options = {}) {
     topPrint.rotation.x = -Math.PI / 2;
     topPrint.position.y = 18.05;
     topPrint.receiveShadow = true;
+    /* ---- the base print ----------------------------------------------
+       Only built when the pack supplies one. Plenty of jars carry a batch
+       code, a wash date or a QR on the bottom, and until now the model had
+       nowhere to put it: body, skirt and top were the only printable
+       surfaces.
+
+       It sits INSIDE the punt. The jar's base is a shallow dish, 1.05mm
+       proud at the axis falling to the standing heel at r=22.6, so a disc at
+       y=0.55 and r=16 tucks under the dished surface everywhere without
+       poking through the plane the jar stands on. Any flatter and it
+       z-fights the punt; any wider and the jar appears to rest on the label.
+
+       No texture flip. Rotating the disc +90 degrees about X maps its local
+       +Y to world +Z while local +X is left alone, so a viewer underneath
+       reads u left to right exactly as authored. Mirroring "to correct for
+       viewing the back" was a correction for a problem that is not there,
+       and it printed every batch code backwards. Verified by rendering. */
+    if (label.bottom) {
+      const bMaps = label.bottom(Math.min(2048, texSize));
+      const bGeo = new THREE.CircleGeometry(16, 96);
+      disposables.push(bGeo);
+      const bAl = canvasTexture(bMaps.albedo, { srgb: true, aniso });
+      const bRo = canvasTexture(bMaps.roughness, { aniso });
+      const bNo = canvasTexture(bMaps.normal, { aniso });
+      disposables.push(bAl, bRo, bNo);
+      const botMat = new THREE.MeshPhysicalMaterial({
+        map: bAl, roughnessMap: bRo, roughness: 1.0,
+        normalMap: bNo, normalScale: new THREE.Vector2(0.34, 0.34),
+        metalness: bMaps.metalness ? 1.0 : 0.0, envMapIntensity: 0.34, clearcoat: 0.05,
+      });
+      if (bMaps.metalness) {
+        const bMt = canvasTexture(bMaps.metalness, { aniso });
+        disposables.push(bMt);
+        botMat.metalnessMap = bMt;
+      }
+      if (bMaps.material) Object.assign(botMat, bMaps.material);
+      const basePrint = new THREE.Mesh(bGeo, botMat);
+      basePrint.name = 'jar-base-print';
+      basePrint.rotation.x = Math.PI / 2;      // faces -Y
+      basePrint.position.y = 0.55;
+      jarBody.add(basePrint);
+      meshes['jar-base-print'] = basePrint;
+    }
     cap.add(topPrint);
     meshes['lid-top-print'] = topPrint;
   }

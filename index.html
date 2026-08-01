@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Meltshelf — every jar you have had, on one shelf</title>
+<title>Meltshelf: every jar you have had, on one shelf</title>
 <meta name="description" content="Photograph a jar and it becomes a jar you can turn, open and show. Your whole rotation on one shelf, and a link you can send. Private by default.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -240,6 +240,12 @@ body[data-sponsor] #sponsor.on{opacity:1}
   color:#06210A;border:0;padding:14px 26px;border-radius:2px;font:inherit;
   font-weight:700;font-size:14px;cursor:pointer}
 .cta .fine{margin-top:18px;font-size:12px;color:var(--l3)}
+.cta .browse{margin-top:30px;padding-top:26px;border-top:1px solid var(--line);
+  font-size:14px;color:var(--l2)}
+.cta .browse a{color:var(--green);text-decoration:none;font-weight:600;
+  border-bottom:1px solid transparent;transition:border-color .2s var(--ease)}
+.cta .browse a:hover{border-bottom-color:var(--green)}
+.cta .browse span{display:block;margin-top:8px;font-size:12px;color:var(--l3)}
 /* waitlist confirmation: there is no emailed receipt, so the page is the
    receipt and it dresses like one */
 .joined{margin-top:34px}
@@ -352,7 +358,7 @@ footer a:hover{color:var(--green)}
 <div id="cue">Scroll to open<span class="bar"></span></div>
 <div id="rail"><div id="railFill"></div></div>
 
-<a id="toShelf" href="./app.html">Your shelf →</a>
+<a id="toShelf" href="./discover.html">Discover →</a>
 
 <main id="after">
   <section class="wrap">
@@ -511,6 +517,17 @@ footer a:hover{color:var(--green)}
       <button type="submit" id="joinBtn">Get early access</button>
     </form>
     <p class="fine" id="fine">One email when it opens. Nothing else, ever.</p>
+
+    <!-- The signed-out escape hatch, and it deliberately sits BELOW the form
+         rather than beside it: the waitlist is still the ask. It is outside
+         #fine and #waitlist so the joined-state handler, which hides both,
+         leaves it standing. Having just signed up, "go and look" is the one
+         thing left to do. -->
+    <p class="browse">
+      Not ready to sign up?
+      <a href="./discover.html">Browse shelves people have listed →</a>
+      <span>Free, and it does not ask you to make an account.</span>
+    </p>
   </section>
   <footer>
     <span>Meltshelf</span>
@@ -518,6 +535,8 @@ footer a:hover{color:var(--green)}
       <!-- Quiet, deliberately. A designer looking for this will find it; a
            collector deciding whether to log their first jar should not have to
            read past it. -->
+      <a href="./discover.html">Discover</a>
+      &nbsp;·&nbsp;
       <a href="./studio.html">For designers and brands</a>
       &nbsp;·&nbsp;
       <a href="https://saibot.studio">Built by Saibot Studio</a>

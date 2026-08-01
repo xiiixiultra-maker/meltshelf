@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The Shelf — Meltshelf</title>
+<title>The Shelf / Meltshelf</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -119,6 +119,38 @@ header .back:hover{color:var(--green)}
 #card .note.warn{border-color:var(--orange);color:rgba(255,180,130,.8)}
 .chip{width:13px;height:13px;border-radius:2px;display:inline-block;vertical-align:-2px;
   margin-right:6px;border:1px solid rgba(255,255,255,.2)}
+
+/* ---------------- open the jar ----------------
+   The card scrolls once the details are out, because on a laptop the whole
+   thing would otherwise run off the bottom of the screen. */
+#card{max-height:calc(100vh - 44px);overflow-y:auto;scrollbar-width:thin}
+#c-open{width:100%;margin-top:14px;padding:10px;font-weight:700;font-size:12px;
+  background:linear-gradient(96deg,var(--green),#8BFF52 55%,var(--orange));
+  color:#06210A;border:0;border-radius:3px;cursor:pointer;font-family:inherit;
+  letter-spacing:.01em}
+#c-open:disabled{opacity:.5;cursor:default}
+#c-open.shut{background:transparent;color:var(--l2);border:1px solid var(--line)}
+#c-open.shut:hover{border-color:var(--green);color:var(--green)}
+
+/* Height is animated off a measured scrollHeight rather than a guessed max
+   height: the details block is a different length for every jar, and a
+   max-height guess either clips the long one or makes the short one crawl. */
+#c-more{overflow:hidden;height:0;opacity:0;
+  transition:height .42s var(--ease),opacity .3s var(--ease)}
+#c-more.on{opacity:1}
+#c-more .inner{padding-top:15px;margin-top:15px;border-top:1px solid var(--line)}
+.sec{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--orange);margin-bottom:9px}
+.sec.g{color:var(--green)}
+#c-more table{margin-top:0}
+#c-more .notes{margin-top:16px}
+.samp{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:8.5px;
+  letter-spacing:.18em;text-transform:uppercase;color:var(--l3);
+  border:1px solid var(--line);border-radius:99px;padding:3px 8px;margin-left:7px;
+  vertical-align:1px}
+#c-more .body{margin-top:9px;font-size:12px;line-height:1.66;color:var(--l2)}
+#c-more .yours{margin-top:11px;font-size:11px;line-height:1.6;color:var(--l3);
+  border-left:2px solid var(--line);padding-left:10px}
 </style>
 </head>
 <body>
@@ -130,7 +162,7 @@ header .back:hover{color:var(--green)}
   <h1>The Shelf</h1>
   <p>Three bays, three rules. Provenance is earned on every account; the bays
      are what you paid for.</p>
-  <a class="back" href="./app.html">← Your shelf</a>
+  <a class="back" href="./discover.html">← Discover</a>
 </header>
 
 <div id="hint">Drag to orbit · scroll to zoom · click a jar</div>
@@ -176,17 +208,28 @@ header .back:hover{color:var(--green)}
 </div>
 
 <div id="card" class="off">
-  <h2 id="c-name">—</h2>
-  <p class="strain" id="c-strain">—</p>
-  <div class="badge none" id="c-badge"><i></i><span>—</span></div>
+  <h2 id="c-name">not set</h2>
+  <p class="strain" id="c-strain">not set</p>
+  <div class="badge none" id="c-badge"><i></i><span>not set</span></div>
   <table>
-    <tr><td>shelf</td><td id="c-shelf">—</td></tr>
-    <tr><td>colour</td><td id="c-col">—</td></tr>
-    <tr><td>captured</td><td id="c-cap">—</td></tr>
-    <tr><td>displayed</td><td id="c-disp">—</td></tr>
-    <tr><td>edit</td><td id="c-edit">—</td></tr>
+    <tr><td>shelf</td><td id="c-shelf">not set</td></tr>
+    <tr><td>colour</td><td id="c-col">not set</td></tr>
+    <tr><td>captured</td><td id="c-cap">not set</td></tr>
+    <tr><td>displayed</td><td id="c-disp">not set</td></tr>
+    <tr><td>edit</td><td id="c-edit">not set</td></tr>
   </table>
   <p class="note" id="c-note"></p>
+
+  <button id="c-open">Open jar</button>
+  <div id="c-more"><div class="inner">
+    <p class="sec g">What it is</p>
+    <table id="c-spec"></table>
+    <div class="notes">
+      <p class="sec">Notes<span class="samp" id="c-samp" hidden>Sample</span></p>
+      <p class="body" id="c-body"></p>
+      <p class="yours" id="c-yours"></p>
+    </div>
+  </div></div>
 </div>
 
 <script type="importmap">
@@ -221,22 +264,52 @@ const dE = differenceEuclidean('oklab');
      wishlist   you do not own it, so there is nothing to attest
      prototype  nobody ever owned it, so a badge would be a lie
    ===================================================================== */
+/* Every `spec` row below is read off the jar's own printed label, not assumed.
+   The two Resin Culture wraps carry "2G · COLD-CURE · PREMIUM LIVE ROSIN ·
+   90-139U · SMALL BATCH · SINGLE SOURCE"; the Charras wraps carry "90u · LIVE
+   ROSIN". Tasting notes are a different kind of claim and are marked as
+   samples wherever they have not been written by the person who owned the jar,
+   because a note is somebody's word and the page should not put words in
+   anyone's mouth. */
 const ROSTER = [
   { key: 'sour-diesel-bx2', name: 'Sour Diesel BX2', strain: 'Sour Diesel BX2',
     brand: 'Resin Culture', bay: 'rotation', provenance: 'in_hand',
-    captured: '#E4D3A4', display: '#E4D3A4', x: -168 },
+    captured: '#E4D3A4', display: '#E4D3A4', x: -168,
+    spec: [['process', 'Cold cure live rosin'], ['micron', '90-139u'],
+           ['format', '2g'], ['sourcing', 'Small batch, single source']],
+    sample: true,
+    note: 'Blonde and dry to the eye, sitting flat rather than slumping against '
+        + 'the glass. Colour came off the pixels unadjusted, which is why the '
+        + 'captured and displayed values are the same hex.' },
 
   { key: 'rodman', name: 'Rodman', strain: 'Gary Payton x Rainbow Guava',
     brand: 'Resin Culture', bay: 'rotation', provenance: 'in_hand',
-    captured: '#D9DEBE', display: '#D5DCB4', x: -100 },
+    captured: '#D9DEBE', display: '#D5DCB4', x: -100,
+    spec: [['process', 'Cold cure live rosin'], ['micron', '90-139u'],
+           ['format', '2g'], ['sourcing', 'Small batch, single source']],
+    sample: true,
+    note: 'Colder and paler than the Sour Diesel next to it, which is the whole '
+        + 'reason both are on the shelf: side by side the difference is obvious, '
+        + 'and in two separate photographs it is not.' },
 
   { key: 'charras', name: 'Charras', strain: 'Oishii x Gary Payton',
     brand: 'Charras', bay: 'wishlist', provenance: null,
-    captured: null, display: '#E4D3A4', x: 0 },
+    captured: null, display: '#E4D3A4', x: 0,
+    spec: [['process', 'Live rosin'], ['micron', '90u'],
+           ['status', 'Not owned'], ['listing', 'Never public']],
+    sample: false,
+    note: 'Nothing to record. Nobody has had this jar, so there is no aroma, no '
+        + 'texture and no session to describe. A wish list entry is a want, and '
+        + 'the shelf shows it as one rather than dressing it up as a review.' },
 
   { key: 'charras-neon', name: 'Charras', strain: 'Rodman x Oishii',
     brand: 'Charras', bay: 'prototype', provenance: null,
-    captured: null, display: '#E4D3A4', x: 100 },
+    captured: null, display: '#E4D3A4', x: 100,
+    spec: [['process', 'Live rosin'], ['micron', '90u'],
+           ['status', 'Never produced'], ['listing', 'Excluded by the projection']],
+    sample: false,
+    note: 'A design that has not been made. It exists so a label can be tried on '
+        + 'a real jar at real proportions before anyone commits to printing it.' },
 ];
 
 const BAYS = {
@@ -244,6 +317,39 @@ const BAYS = {
   wishlist:  { label: 'Wish list',        sub: 'premium',        cls: 'wish',  x: 0 },
   prototype: { label: 'Prototype',        sub: 'premium · quarantined', cls: 'proto', x: 100 },
 };
+
+/* =====================================================================
+   PUBLIC VIEW  (?public=1)
+
+   What a stranger arriving from Discover is allowed to see, and it is not a
+   CSS state: the jars they may not see are never built, so there is no
+   overlay to peel back and nothing in the scene graph to inspect. Only the
+   rotation bay survives, which is the same rule the database projection
+   applies, expressed here in the only place a browser could break it.
+
+   This is a faithful demo of the rule, not a security boundary. The real
+   boundary is server side, where the projection decides what is ever sent.
+   ===================================================================== */
+const PUBLIC = new URLSearchParams(location.search).get('public') === '1';
+const PUBLIC_BAYS = ['rotation'];
+const SHOWN = PUBLIC ? ROSTER.filter((r) => PUBLIC_BAYS.includes(r.bay)) : ROSTER;
+const SHOWN_BAYS = Object.fromEntries(
+  Object.entries(BAYS).filter(([k]) => SHOWN.some((r) => r.bay === k)));
+
+if (PUBLIC) {
+  document.body.dataset.view = 'public';
+  document.querySelector('header h1').textContent = '@NastySaibot';
+  document.querySelector('header p').textContent =
+    'Current rotation. Two jars, both captured in session. A wish list and any '
+    + 'prototypes are not part of this view.';
+  const back = document.querySelector('header .back');
+  back.textContent = '← Discover';
+  // Someone else's shelf is not yours to redress, so the trim controls go.
+  // The trim itself stays lit, because that is how the owner left it.
+  document.getElementById('fx').hidden = true;
+  document.getElementById('hint').textContent =
+    'Drag to orbit · scroll to zoom · click a jar to open it';
+}
 
 /* ---------------------------------------------------------------- scene */
 const app = document.getElementById('app');
@@ -268,9 +374,15 @@ const camera = new THREE.PerspectiveCamera(34, innerWidth / innerHeight, 1, 3000
 // and the midpoint sits at x = -34, so the camera has to sit back far enough
 // that a narrow window still shows every bay. The first pass put it at 268 and
 // pushed the first jar off screen.
-camera.position.set(-34, 150, 470);
+// The public view holds two jars spanning x -168..-100, so it reframes onto
+// their midpoint instead of the full roster's. Left at -34 the shelf would
+// read as mostly empty plank with the content shoved into a corner.
+const FRAME = PUBLIC
+  ? { cx: -134, pos: [-134, 104, 300] }
+  : { cx: -34,  pos: [-34, 150, 470] };
+camera.position.set(...FRAME.pos);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(-34, 20, 0);
+controls.target.set(FRAME.cx, 20, 0);
 controls.enableDamping = true; controls.dampingFactor = .07;
 controls.minDistance = 90; controls.maxDistance = 900;
 controls.maxPolarAngle = Math.PI * 0.52;      // never below the plank
@@ -280,28 +392,72 @@ const fill = new THREE.DirectionalLight(0xbcd0e0, 0.22);
 fill.position.set(120, 60, 140);
 scene.add(fill);
 
-// the plank
+// The plank is deeper than the jars need, and that spare depth is not
+// decoration: it is where a cap goes when you take one off. At 96 there was
+// nowhere in front of the row to set one down.
 const plank = new THREE.Mesh(
-  new THREE.BoxGeometry(560, 8, 96),
+  new THREE.BoxGeometry(560, 8, 130),
   new THREE.MeshStandardMaterial({ color: new THREE.Color('#15181D'), roughness: .74, metalness: .12 }),
 );
 plank.position.set(-34, -4, 0);
 plank.receiveShadow = true;
 scene.add(plank);
 
-// bay dividers
-for (const dx of [-52, 52]) {
+// Bay dividers separate bays. With one bay on screen there is nothing to
+// separate, and a divider standing next to a lone pair of jars reads as a
+// wall somebody forgot to remove.
+for (const dx of (Object.keys(SHOWN_BAYS).length > 1 ? [-52, 52] : [])) {
+  // Short, and set toward the back. A divider running the full depth of the
+  // plank is a wall through the strip of shelf where the caps go, and the
+  // caps got sliced by it. Ending at z=11 leaves the front clear for them,
+  // which is also how a real shelf divider is built: it separates the bays,
+  // it does not fence off the front edge.
   const d = new THREE.Mesh(
-    new THREE.BoxGeometry(1.5, 46, 92),
+    new THREE.BoxGeometry(1.5, 46, 76),
     new THREE.MeshStandardMaterial({ color: new THREE.Color('#1B1F25'), roughness: .8 }),
   );
-  d.position.set(dx, 23, 0);
+  d.position.set(dx, 23, -27);
   d.receiveShadow = true; d.castShadow = true;
   scene.add(d);
 }
 
 /* ---------------------------------------------------------------- jars */
 const jars = [];
+
+/* =====================================================================
+   WHERE A CAP GOES WHEN IT COMES OFF
+
+   The jar model sets a removed cap down 58mm to the LEFT, every time. That is
+   right for the hero jar on the homepage, which stands alone. On a shelf the
+   jars are 68mm apart, so "58mm left" is almost exactly the next jar along,
+   and taking a lid off dropped it on its neighbour.
+
+   The reach is kept, because it is what carries the cap clear of its own jar.
+   Only the DIRECTION is decided here, per jar, toward whichever side has more
+   room, and the cap comes forward onto the front of the plank as well. Both
+   together are what stop it landing on anything:
+
+     x 58 toward the open side  ->  42mm of x from a 100mm neighbour
+     z 38 forward               ->  56mm centre to centre, clear of 51mm of radii
+
+   The offset is decided in WORLD space and then counter-rotated into the
+   jar's local frame, because every jar is stood at a small random angle. Set
+   as a local offset it inherits that angle, and the first version put
+   Rodman's cap 47mm from the next jar instead of the 56 it was aiming for.
+
+   The model keeps ownership of the lift, the tilt and the turn. This only
+   redirects the last part of the travel, after the thread has released.
+   ===================================================================== */
+const CAP_REST = { reach: 58, forward: 38 };
+function capRestFor(x, yaw) {
+  const others = SHOWN.map((r) => r.x).filter((v) => v !== x);
+  // No neighbour on a side means unlimited room on that side.
+  const gapL = Math.min(...others.filter((v) => v < x).map((v) => x - v), Infinity);
+  const gapR = Math.min(...others.filter((v) => v > x).map((v) => v - x), Infinity);
+  const wx = (gapR >= gapL ? 1 : -1) * CAP_REST.reach, wz = CAP_REST.forward;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  return { x: c * wx - s * wz, z: s * wx + c * wz };   // world -> local, about Y
+}
 
 /** Wish-list jars glow from inside. Material, not a badge: the shelf should
  *  read at a glance without labels, and a glowing jar says "not mine yet". */
@@ -346,7 +502,7 @@ async function build() {
     await fetch('./assets/charras-logo.png').then((r) => r.blob()));
   await document.fonts.ready;
 
-  for (const item of ROSTER) {
+  for (const item of SHOWN) {
     const label = item.key === 'charras'
       ? { ...makeCharrasPack({ logo }), contents: CONTENTS.warmBlonde, lighting: LIGHTING.studio }
       : item.key === 'charras-neon'
@@ -369,6 +525,12 @@ async function build() {
 
     if (item.bay === 'wishlist') makeWishlist(jar, item.display);
     if (item.bay === 'prototype') markPrototype(jar);
+
+    // Where this jar's cap goes when it comes off. build() runs after
+    // setOpen(0), so the lid is at its home transform and safe to record.
+    jar.userData.lid = jar.getObjectByName('lid-assembly');
+    if (jar.userData.lid) jar.userData.capHome = jar.userData.lid.position.clone();
+    jar.userData.rest = capRestFor(item.x, jar.rotation.y);
 
     scene.add(jar);
     jars.push(jar);
@@ -399,7 +561,7 @@ function trimColourAt(t) {
   return _out.set('#000000');
 }
 
-const STRIP_W = 560, STRIP_X = -34, STRIP_Z = 49.5;
+const STRIP_W = 560, STRIP_X = -34, STRIP_Z = 66.5;   // rides the plank's front lip
 const stripCv = document.createElement('canvas');
 stripCv.width = 256; stripCv.height = 1;
 const stripCtx = stripCv.getContext('2d');
@@ -576,7 +738,7 @@ q('tGlow').addEventListener('input', (e) => { TRIM.glow = +e.target.value; paint
 
 /* ------------------------------------------------------- bay captions */
 const bayEls = {};
-for (const [k, b] of Object.entries(BAYS)) {
+for (const [k, b] of Object.entries(SHOWN_BAYS)) {
   const el = document.createElement('div');
   el.className = 'bay ' + b.cls;
   el.innerHTML = `<b>${b.label}</b><span>${b.sub}</span>`;
@@ -585,7 +747,7 @@ for (const [k, b] of Object.entries(BAYS)) {
 }
 const v = new THREE.Vector3();
 function placeCaptions() {
-  for (const [k, b] of Object.entries(BAYS)) {
+  for (const [k, b] of Object.entries(SHOWN_BAYS)) {
     v.set(b.x, -10, 58).project(camera);
     const el = bayEls[k];
     const behind = v.z > 1;
@@ -655,8 +817,102 @@ function show(it) {
       ? 'A wish list jar. You do not own it, so there is no provenance to state and the badge names the bay instead. It glows so the shelf reads without labels.'
       : 'A prototype. Nobody ever owned this jar, so a provenance badge would be a lie and the badge names the bay instead. Excluded from public browse and from every count.';
   }
+  // ---- the details behind the button ----
+  $('c-spec').innerHTML = it.spec
+    .map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+  $('c-samp').hidden = !it.sample;
+  $('c-body').textContent = it.note;
+  const yours = $('c-yours');
+  yours.hidden = !it.sample;
+  yours.textContent = it.sample
+    ? 'Sample text, sitting where your own note goes. Aroma, texture, how it '
+    + 'pressed, what the room smelled like: yours to write, and none of it '
+    + 'leaves your account unless you publish the shelf.'
+    : '';
+
   card.classList.remove('off');
+  // The card is reused across jars, so the button has to be re-synced to the
+  // jar just picked rather than left showing the last one's state. Measured
+  // after the card is visible: a display:none subtree measures as zero.
+  syncOpenUI(jarFor(it));
 }
+
+/* =====================================================================
+   OPENING A JAR
+
+   The cap is on a real thread, so "open" is not a swap to a second model:
+   setOpen drives rise and rotation off one shared pitch and the cap cannot
+   lift without turning. 0 is closed, 1 is the thread released, 2 is set
+   aside, and the tween runs the whole way so the turn is legible.
+
+   Each jar owns its own rAF handle. With one shared handle, opening a second
+   jar cancelled the first one's tween mid-travel and left a cap floating at
+   whatever height it had reached.
+   ===================================================================== */
+const OPEN_T = 2.0, OPEN_MS = 900;
+let openJar = null;
+
+const jarFor = (it) => jars.find((j) => j.userData.item === it);
+const ease = (t) => t * t * (3 - 2 * t);
+
+function tweenOpen(jar, to) {
+  if (!jar) return;
+  const rt = jar.userData.sculptRuntime;
+  cancelAnimationFrame(jar.userData.openAnim);
+  const from = rt.openAmount ?? 0;
+  if (Math.abs(to - from) < 0.001) return;
+  const t0 = performance.now();
+  (function step(now) {
+    const k = Math.min(1, (now - t0) / OPEN_MS);
+    const v = from + (to - from) * ease(k);
+    rt.setOpen(v);
+    placeCap(jar, v);
+    if (k < 1) jar.userData.openAnim = requestAnimationFrame(step);
+  })(performance.now());
+}
+
+/** Redirect the set-aside leg of the travel. Runs after setOpen, which writes
+ *  x and z itself, so this has to overwrite rather than offset. The easing
+ *  matches the model's so the cap does not change speed halfway across. */
+function placeCap(jar, v) {
+  const lid = jar.userData.lid;
+  if (!lid) return;
+  const free = Math.max(0, Math.min(1, v - 1));
+  const e = free * free * (3 - 2 * free);
+  lid.position.x = jar.userData.capHome.x + e * jar.userData.rest.x;
+  lid.position.z = jar.userData.capHome.z + e * jar.userData.rest.z;
+}
+
+function syncOpenUI(jar) {
+  const isOpen = !!jar?.userData.wantOpen;
+  const btn = $('c-open');
+  btn.textContent = isOpen ? 'Close jar' : 'Open jar';
+  btn.classList.toggle('shut', isOpen);
+  const more = $('c-more');
+  more.classList.toggle('on', isOpen);
+  // Animate to a measured height. The inner block is a different length for
+  // every jar, so a fixed max-height would clip the long ones.
+  // scrollHeight, not the child's offsetHeight: the child carries a 15px top
+  // margin that offsetHeight does not count, so the panel opened 15px short
+  // and cut the last line off every note.
+  more.style.height = isOpen ? more.scrollHeight + 'px' : '0px';
+}
+
+$('c-open').addEventListener('click', () => {
+  const jar = jarFor(picked);
+  if (!jar) return;
+  const next = !jar.userData.wantOpen;
+  // One open jar at a time. Two open jars on a shelf reads as a bug, not a
+  // feature, and the cap you set down stops belonging to anything.
+  if (next && openJar && openJar !== jar) {
+    openJar.userData.wantOpen = false;
+    tweenOpen(openJar, 0);
+  }
+  jar.userData.wantOpen = next;
+  openJar = next ? jar : null;
+  tweenOpen(jar, next ? OPEN_T : 0);
+  syncOpenUI(jar);
+});
 
 /* ---------------------------------------------------------------- loop */
 addEventListener('resize', () => {
@@ -674,7 +930,26 @@ addEventListener('resize', () => {
 })();
 
 await build();
-window.__shelf = { scene, camera, jars, renderer, show, ROSTER, TRIM, SMOKE, setMode, paintTrim, trimColourAt };
+
+if (PUBLIC) {
+  // The owner of this shelf pays for trim, so their trim is lit. The visitor
+  // is seeing a setting, not being granted a feature: the controls are gone
+  // and the entitlement being honoured is somebody else's.
+  q('premium').checked = true;
+  setMode('rainbow');
+}
+
+/* The public view exports only what it displays. This is tidiness, not
+   security: on a static host the roster literal is in the source of the page
+   every visitor downloads, and no amount of export hygiene changes that. Real
+   enforcement is the server-side projection, which decides what is ever sent.
+   What this does buy is that the page and its own console agree. */
+window.__shelf = {
+  scene, camera, jars, renderer, PUBLIC, SHOWN,
+  ROSTER: PUBLIC ? SHOWN : ROSTER,
+  show: (it) => (PUBLIC && !SHOWN.includes(it)) ? undefined : show(it),
+  TRIM, SMOKE, setMode, paintTrim, trimColourAt, tweenOpen, jarFor,
+};
 </script>
 </body>
 </html>

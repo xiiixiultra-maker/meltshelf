@@ -3,8 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Discover — Meltshelf</title>
-<meta name="robots" content="noindex">
+<title>Discover / Meltshelf</title>
+<meta name="description" content="Browse shelves people chose to list. No account needed.">
+<!-- Indexable on purpose. This is the one page a stranger can use in full
+     without an account, so it is the page that should be findable. -->
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -49,8 +52,24 @@ header .wrap{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
   border-left:2px solid var(--orange);padding-left:13px;max-width:64ch}
 .lede .consent b{color:var(--orange)}
 .lede .mock{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10px;
-  letter-spacing:.2em;text-transform:uppercase;color:var(--l3);
-  border:1px solid var(--line);border-radius:99px;padding:5px 12px;margin-bottom:16px}
+  letter-spacing:.2em;text-transform:uppercase;color:var(--green);
+  border:1px solid rgba(81,236,67,.4);background:rgba(81,236,67,.07);
+  border-radius:99px;padding:5px 12px;margin-bottom:16px}
+.lede .early{margin-top:14px;font-size:12.5px;line-height:1.6;color:var(--l3);
+  border-left:2px solid var(--line);padding-left:13px;max-width:64ch}
+.lede .early b{color:var(--l1)}
+
+/* A real listed shelf and an example of one must never be told apart by
+   reading carefully. The real card is the only one that lifts, glows and
+   accepts a click; examples are inert and say so on their face. */
+.card.eg{opacity:.72}
+.card.eg:hover{border-color:var(--line);transform:none}
+.card.eg .shelfimg{filter:saturate(.72)}
+.tag.eg{color:var(--l2);border-color:rgba(237,241,245,.28);letter-spacing:.16em}
+.card.live{border-color:rgba(81,236,67,.34)}
+.card.live:hover{box-shadow:0 0 26px rgba(81,236,67,.13)}
+.card .open{margin-top:11px;font-family:'IBM Plex Mono',monospace;font-size:10px;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--green)}
 
 .grid{display:grid;gap:14px;padding-bottom:70px;
   grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}
@@ -92,8 +111,7 @@ footer a:hover{color:var(--green)}
 <body>
 
 <header><div class="wrap">
-  <a class="brand" href="./home.html"><b>Meltshelf</b> &nbsp;/&nbsp; Discover</a>
-  <a class="shelfLink" href="./app.html">Your shelf</a>
+  <a class="brand" href="./"><b>Meltshelf</b> &nbsp;/&nbsp; Discover</a>
   <div class="filters" id="filters">
     <button class="chip trust" data-f="inhand">In hand only</button>
     <button class="chip" data-f="ice_water">Ice water</button>
@@ -105,10 +123,16 @@ footer a:hover{color:var(--green)}
 </div></header>
 
 <div class="wrap lede">
-  <span class="mock">Design preview, fictional shelves</span>
+  <span class="mock">Free to browse · no account</span>
   <h1>Shelves people chose to show.</h1>
   <p>Every shelf here was listed on purpose. Sorted by what is actually in the
-     jars, not by who posts most.</p>
+     jars, not by who posts most. You do not need an account to look, and
+     nothing on this page asks you to make one.</p>
+  <p class="early"><b>One real shelf so far.</b> Meltshelf has not opened to
+     signups yet, so the only listed shelf is the one it was built on. The
+     rest of this page shows what a card carries once other shelves land, and
+     every one of those is marked as an example so nobody has to guess which
+     is which.</p>
   <p class="consent"><b>Listing is a separate switch from sharing.</b> A shelf
      can be shareable by link and still never appear on this page. Nothing lands
      here because somebody sent a friend a link, and turning listing off removes
@@ -123,7 +147,7 @@ footer a:hover{color:var(--green)}
 
 <footer><div class="wrap">
   <span>Discover</span>
-  <span><a href="./home.html">Meltshelf</a> &nbsp;·&nbsp; <a href="./shelf.html">A shelf</a></span>
+  <span><a href="./">Meltshelf</a> &nbsp;·&nbsp; <a href="./shelf.html">A shelf</a></span>
 </div></footer>
 
 <script type="importmap">
@@ -141,13 +165,24 @@ import { createResinCultureJarModel, createJarLights, CONTENTS, LIGHTING }
 import { makeCharrasPack } from './src/labelArtCharras.js';
 
 /* =====================================================================
-   PLACEHOLDER DATA
+   THE DATA
 
-   Fictional shelves, real jars. Handles are obviously invented so nobody
-   mistakes this for live content. The shape is what matters: what a card
-   has to carry for a stranger to decide whether to open it.
+   One real listed shelf and a set of examples, and the difference is carried
+   in the data by `eg` rather than in the copy, so the renderer cannot forget
+   to mark one. Example handles are obviously invented; the real one is not.
+
+   @NastySaibot lists TWO jars and owns four. That is not an error and it is
+   worth reading twice: the wish-list jar and the prototype jar are removed by
+   the projection that feeds this page, so a public count and an owner's count
+   are different numbers by design. The card shows what a stranger can see.
    ===================================================================== */
 const SHELVES = [
+  { handle: '@NastySaibot', title: 'Current rotation',
+    jars: ['sour-diesel-bx2','rodman'],
+    // Both jars state cold-cure premium live rosin, 90-139u on their own
+    // labels, so the tag is read off the product rather than assumed.
+    n: 2, inhand: 2, tags: ['rosin'], soil: false, real: true },
+
   { handle: '@coldroom', title: 'Winter rotation', jars: ['rodman','sour-diesel-bx2','charras'],
     n: 14, inhand: 12, tags: ['ice_water','rosin'], soil: true },
   { handle: '@sixstaronly', title: 'Full melt or nothing', jars: ['sour-diesel-bx2','charras','rodman'],
@@ -241,12 +276,17 @@ function draw() {
   document.getElementById('empty').hidden = list.length > 0;
   grid.innerHTML = list.map((s) => {
     const pct = Math.round((s.inhand / s.n) * 100);
-    return `<a class="card" href="./shelf.html">
+    // Only a real shelf is a link. An example that opened somebody else's
+    // shelf would be teaching the visitor something false about the page.
+    const tag = s.real ? 'a' : 'div';
+    const attr = s.real ? ' href="./shelf.html?public=1"' : '';
+    return `<${tag} class="card ${s.real ? 'live' : 'eg'}"${attr}>
       <img class="shelfimg" src="${s.thumb}" alt="">
       <div class="meta">
         <div class="who"><span class="handle">${s.handle}</span><span class="n">${s.n} jars</span></div>
         <div class="title">${s.title}</div>
         <div class="tags">
+          ${s.real ? '' : '<span class="tag eg">Example</span>'}
           ${s.inhand === s.n ? '<span class="tag p">All in hand</span>' : ''}
           ${s.tags.map((t) => `<span class="tag">${t.replace('_', ' ')}</span>`).join('')}
         </div>
@@ -254,9 +294,10 @@ function draw() {
           <i class="hand" style="width:${pct}%"></i><i class="up" style="width:${100 - pct}%"></i>
         </div>
         <div class="prov"><b>${s.inhand} captured in session</b> · ${s.n - s.inhand} uploaded</div>
+        ${s.real ? '<div class="open">Open this shelf →</div>' : ''}
       </div>
-    </a>`;
-  }).join('') + `<a class="card invite" href="./home.html">
+    </${tag}>`;
+  }).join('') + `<a class="card invite" href="./">
     <div class="meta">
       <div class="it">Your shelf could sit here.</div>
       <div class="il">Listing is off until you turn it on. Nothing appears here by accident.</div>

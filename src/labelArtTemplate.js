@@ -502,5 +502,20 @@ export function makeTemplatePack(cfg = CONFIG) {
              material: { envMapIntensity: 0.85, clearcoat: 0.30, clearcoatRoughness: 0.30 } };
   };
 
-  return { name: C.name, body, skirt, top };
+  /**
+   * The base print.
+   *
+   * Optional, and only exists when there is artwork for it, because most jars
+   * have nothing on the bottom and an invented base sticker would be a claim
+   * about a real product. A pack without `art.bottom` returns null and the jar
+   * factory skips the mesh entirely.
+   *
+   * Square like the cap top, not a wrap: a base label is a disc read face on,
+   * so it has no seam and no circumference to divide.
+   */
+  const bottom = C.art?.bottom
+    ? (S = 1024) => artWrap(C.art.bottom, S, 1, C)
+    : null;
+
+  return { name: C.name, body, skirt, top, bottom };
 }

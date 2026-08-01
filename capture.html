@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Capture — Meltshelf</title>
+<title>Capture / Meltshelf</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -45,6 +45,119 @@ button.primary{background:linear-gradient(96deg,var(--green),#8BFF52 55%,var(--o
   text-decoration:none;background:rgba(8,9,11,.72);border:1px solid var(--line);
   border-radius:3px;padding:7px 11px}
 #toShelf:hover{color:var(--green);border-color:var(--green)}
+
+
+/* ---------------- viewfinder ----------------
+   Full screen and opaque, above every other layer, because a viewfinder that
+   shares the screen with a control panel is the bug this replaced. Nothing in
+   here samples anything: this mode exists only to take the picture. */
+#vf{position:fixed;inset:0;z-index:40;background:#000;display:flex;
+  flex-direction:column;align-items:center;justify-content:flex-end}
+#vfvid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+/* The guide is the framing target, not the sampling ring. The ring is chosen
+   afterwards on the still, where it can be dragged precisely. */
+#vfguide{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);
+  width:min(62vw,300px);aspect-ratio:1;border:2px solid rgba(255,255,255,.82);
+  border-radius:50%;box-shadow:0 0 0 100vmax rgba(0,0,0,.42);pointer-events:none}
+#vfhint{position:absolute;left:0;right:0;top:calc(44% + min(31vw,150px) + 22px);
+  text-align:center;font-family:'IBM Plex Mono',monospace;font-size:11px;
+  letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.9);
+  text-shadow:0 1px 10px rgba(0,0,0,.9);pointer-events:none;padding:0 24px}
+#vfbar{position:relative;z-index:2;width:100%;display:grid;
+  grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;
+  padding:0 20px calc(26px + env(safe-area-inset-bottom)) 20px}
+#vfshoot{width:74px;height:74px;border-radius:50%;padding:0;
+  background:#fff;border:4px solid rgba(255,255,255,.42);
+  box-shadow:0 0 0 3px rgba(0,0,0,.35);cursor:pointer;justify-self:center}
+#vfshoot:active{transform:scale(.94)}
+#vfshoot:hover{background:#fff;border-color:var(--green)}
+#vfcancel{justify-self:start;background:rgba(0,0,0,.5);border-color:rgba(255,255,255,.3)}
+#vfnext{justify-self:end;background:rgba(8,9,11,.62);border-color:var(--green);
+  color:var(--green);font-size:11px;padding:9px 13px}
+body[data-mode="shoot"] #toShelf{display:none}
+
+/* The guide is a different shape for the two halves of the session, because
+   it is asking for two different things. Round for the inside, where it marks
+   the sampling ring. Jar-shaped for the outside, where it sets the silhouette
+   the unwrap measures its geometry from: get this wrong and every strip is
+   unwrapped against the wrong radius. */
+#vfguide.jar{width:min(74vw,330px);aspect-ratio:50 / 42;border-radius:14px}
+/* A peeled label is a long thin rectangle, so the guide is too: it is the
+   crop the wrap is taken from, not a suggestion. */
+#vfguide.flat{width:min(92vw,560px);aspect-ratio:7.194;border-radius:4px}
+#vfstep{position:absolute;left:0;right:0;top:calc(6% + env(safe-area-inset-top));
+  text-align:center;font-family:'IBM Plex Mono',monospace;color:#fff;
+  text-shadow:0 1px 12px rgba(0,0,0,.9);pointer-events:none;padding:0 20px}
+#vfstep b{display:block;font-size:13px;letter-spacing:.24em;text-transform:uppercase}
+#vfstep span{display:block;margin-top:7px;font-size:11px;letter-spacing:.1em;
+  color:rgba(255,255,255,.78);text-transform:none}
+/* Pips, so the count is readable without reading. */
+#vfpips{position:absolute;left:0;right:0;bottom:calc(122px + env(safe-area-inset-bottom));
+  display:flex;justify-content:center;gap:7px;pointer-events:none}
+#vfpips i{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.3)}
+#vfpips i.done{background:var(--green)}
+#vfpips i.opt{box-shadow:inset 0 0 0 1px rgba(255,255,255,.55);background:transparent}
+#vfpips i.opt.done{background:var(--green);box-shadow:none}
+#vfpips i.now{background:#fff;transform:scale(1.35)}
+#vfflash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+#vfflash.go{animation:flash .34s ease-out}
+@keyframes flash{from{opacity:.85}to{opacity:0}}
+
+/* ---------------- route chooser ---------------- */
+#route{position:fixed;inset:0;z-index:50;background:var(--bg);display:grid;
+  place-items:center;padding:24px}
+#route .in{max-width:760px;width:100%}
+#route h2{font-size:clamp(20px,3.4vw,30px);font-weight:800;letter-spacing:-.02em}
+#route .sub{margin-top:9px;font-size:13px;color:var(--l2);line-height:1.6;max-width:56ch}
+#route .opts{display:grid;gap:12px;margin-top:24px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.opt{text-align:left;padding:18px;border:1px solid var(--line);border-radius:6px;
+  background:var(--pane);cursor:pointer;transition:border-color .2s var(--ease)}
+.opt:hover{border-color:var(--green);background:var(--pane)}
+.opt b{display:block;font-size:15px;font-weight:700;margin-bottom:7px}
+.opt span{display:block;font-size:12px;color:var(--l2);line-height:1.6}
+.opt em{display:block;margin-top:10px;font-style:normal;font-family:'IBM Plex Mono',monospace;
+  font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--green)}
+.opt.alt em{color:var(--orange)}
+
+/* ---------------- artwork ---------------- */
+#artPrev{width:100%;border:1px solid var(--line);border-radius:3px;display:block;
+  margin-bottom:9px;background:#0A0B0D}
+#artRes{font-family:'IBM Plex Mono',monospace;font-size:10px;line-height:1.6;
+  margin-bottom:9px}
+#artRes.warn{color:var(--orange)}
+#artRes.ok{color:var(--green)}
+.tierNote{font-size:11px;line-height:1.6;color:var(--l3);border-left:2px solid var(--line);
+  padding-left:10px;margin-bottom:11px}
+.tierNote b{color:var(--green)}
+.tierNote i{font-style:normal;color:var(--orange)}
+.seg{display:flex;gap:3px;margin-bottom:9px}
+.seg button{flex:1;font-size:11px;padding:6px 4px}
+.seg button.on{background:var(--greenGlow);border-color:var(--green);color:var(--green)}
+
+/* ---------------- session ---------------- */
+#steps{list-style:none;display:flex;gap:6px;margin-bottom:11px}
+#steps li{flex:1;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--l3);border-top:2px solid var(--line);
+  padding-top:7px;transition:color .3s,border-color .3s}
+#steps li.on{color:var(--green);border-color:var(--green)}
+#steps li.done{color:var(--l2);border-color:var(--l2)}
+#thumbs{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:10px}
+#thumbs .t{position:relative;aspect-ratio:1;border:1px solid var(--line);border-radius:3px;
+  overflow:hidden;background:#0A0B0D}
+#thumbs .t img{width:100%;height:100%;object-fit:cover;display:block}
+#thumbs .t.empty{border-style:dashed}
+#thumbs .t b{position:absolute;left:2px;top:1px;font-family:'IBM Plex Mono',monospace;
+  font-size:8px;color:rgba(255,255,255,.75);text-shadow:0 1px 3px #000}
+#thumbs .t button{position:absolute;right:1px;bottom:1px;padding:0 4px;font-size:8px;
+  line-height:14px;border-radius:2px;background:rgba(8,9,11,.8)}
+.hint{font-size:11px;line-height:1.55;color:var(--l3);margin-bottom:10px}
+#result{position:fixed;inset:0;z-index:45;background:var(--bg);display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px}
+#result canvas{max-width:min(88vw,520px);max-height:56vh;border-radius:6px}
+#result h2{font-size:22px;font-weight:800;letter-spacing:-.02em;text-align:center}
+#result p{font-size:12.5px;color:var(--l2);max-width:44ch;text-align:center;line-height:1.6}
+#wrapOut{max-width:min(92vw,760px);border:1px solid var(--line);border-radius:3px;display:block}
+
 
 /* ---------------- details drawer ---------------- */
 /* Full width, not a second column. Sat beside the 372px aside it got squeezed
@@ -141,11 +254,70 @@ td b{font-weight:500;color:var(--l1)}
 #preview canvas{display:block;width:100%;height:100%}
 #out{margin-top:12px;font-family:'IBM Plex Mono',monospace;font-size:10px;
   color:var(--l3);line-height:1.6;min-height:28px;overflow-wrap:anywhere}
+
+/* ---------------- phone ----------------
+   Last in the file on purpose. `aside` is declared further up as
+   `flex:0 0 372px`, and at equal specificity the later rule wins, so a media
+   query written above it loses and the panel keeps its desktop width. That is
+   how a 372px sidebar ended up on a 375px phone with the viewfinder crushed
+   into the three pixels left over: the whole reported bug.
+
+   Here the panel stops being a column and becomes a sheet under the picture. */
+@media (max-width:860px){
+  body{flex-direction:column}
+  #stage{flex:1 1 auto;min-height:40vh;min-width:0}
+  #shot img,#shot video,#shot canvas{max-width:96vw;max-height:46vh}
+  aside{width:100%;flex:1 1 auto;min-height:0;border-left:0;
+    border-top:1px solid var(--line);padding:15px 15px 34px}
+  #tip{display:none}
+  #toShelf{left:12px;top:10px}
+  /* the drawer is already inset:0, but it sat beside a 372px panel */
+  #drawer{width:100vw}
+}
 </style>
 </head>
 <body>
 
-<a id="toShelf" href="./app.html">← Your shelf</a>
+<a id="toShelf" href="./">← Meltshelf</a>
+
+<div id="vf" hidden>
+  <video id="vfvid" playsinline muted autoplay></video>
+  <div id="vfguide" class="jar"></div>
+  <p id="vfstep"><b>Shot 1 of 6</b><span>Fill the box with the jar</span></p>
+  <div id="vfpips"></div>
+  <div id="vfflash"></div>
+  <div id="vfbar">
+    <button id="vfcancel">Cancel</button>
+    <button id="vfshoot" aria-label="Take the picture"></button>
+    <button id="vfnext" hidden>Done</button>
+  </div>
+</div>
+
+<div id="route"><div class="in">
+  <h2>Where does the label come from?</h2>
+  <p class="sub">Both end in the same jar. The difference is only what the
+     label is drawn from, and one of them is much better input if you happen
+     to have it.</p>
+  <div class="opts">
+    <button class="opt" id="routePhoto">
+      <b>Photograph the jar</b>
+      <span>Six shots around the outside and one inside. The label is
+            reconstructed from your photos. This is the one to pick if you
+            have a jar and nothing else.</span>
+      <em>6 shots + inside</em>
+    </button>
+    <button class="opt alt" id="routeArt">
+      <b>I have the label as a flat image</b>
+      <span>A scan, or the artwork the printer used. No curve to undo and no
+            seams to hide, so it comes out sharper than any reconstruction.
+            You still shoot the inside for the colour.</span>
+      <em>1 file + inside</em>
+    </button>
+  </div>
+  <p class="sub" style="margin-top:20px">Either way the jar is built on this
+     device and nothing is uploaded. Which route drew the label is recorded
+     with the entry: it changes how the jar looks, never what it counts as.</p>
+</div></div>
 
 <div id="stage">
   <div id="shot" hidden>
@@ -165,10 +337,66 @@ td b{font-weight:500;color:var(--l1)}
   <p class="sub">Frame the jar mouth in the ring. Colour is sampled from the pixels
      inside it, in your browser. Nothing is uploaded.</p>
 
+  <fieldset id="art" hidden><legend>Label artwork</legend>
+    <canvas id="artPrev" height="80"></canvas>
+    <p id="artRes">No file yet.</p>
+    <p class="tierNote">
+      <b>Peel the label and photograph it here</b> and the jar counts as
+      captured in session, the same as shooting the jar itself.
+      <i>Loading a file instead</i> makes the entry uploaded: a scan or a
+      brand's artwork is the same bytes whoever sends it, so it cannot stand
+      as evidence you had the jar.
+    </p>
+    <div class="row">
+      <button id="startLabel" class="primary">Photograph the peeled label</button>
+      <button id="artPick">Load a file instead</button>
+    </div>
+    <p class="hint">Does it go all the way round the jar, or is it a label
+       stuck on one side? Getting this wrong is the difference between a label
+       that reads and one smeared round the whole circumference.</p>
+    <div class="seg" id="artMode">
+      <button data-m="full" class="on">Wraps all the way round</button>
+      <button data-m="card">A label on one side</button>
+    </div>
+    <div class="fx-row" id="artWrow" hidden>
+      <label>Width</label>
+      <input type="range" id="artW" min="0.15" max="0.8" step="0.01" value="0.34">
+    </div>
+    <div class="fx-row">
+      <label>Vertical</label>
+      <input type="range" id="artY" min="0" max="1" step="0.01" value="0.5">
+    </div>
+  </fieldset>
+
+  <fieldset id="sess"><legend>Session</legend>
+    <ol id="steps">
+      <li data-s="outside" class="on">Outside <b id="oCount">0/4</b></li>
+      <li data-s="top">Top</li>
+      <li data-s="bottom">Base</li>
+      <li data-s="inside">Inside</li>
+      <li data-s="build">Generate</li>
+    </ol>
+    <div id="thumbs"></div>
+    <p class="hint" id="sessHint">Six shots around the outside build the label.
+       Then open the jar and shoot the inside once: that is where the colour
+       comes from.</p>
+    <div class="row">
+      <button id="startOutside" class="primary">Start capture</button>
+      <button id="startTop" hidden>Shoot the top</button>
+      <button id="fileTop" hidden>Top from a file</button>
+      <button id="startBottom" hidden>Shoot the base</button>
+      <button id="fileBottom" hidden>Base from a file</button>
+      <button id="startInside" class="primary" hidden>Shoot the inside</button>
+      <button id="generate" class="primary" hidden>Generate the jar</button>
+      <button id="resetSess" hidden>Start over</button>
+    </div>
+  </fieldset>
+
   <fieldset><legend>Source</legend>
     <div class="row">
       <button id="cam" class="primary">Start camera</button>
       <button id="pick">Choose photo</button>
+      <button id="retake" hidden>Retake</button>
     </div>
     <div class="row tight">
       <!-- One sample, and it is our own render rather than somebody's product
@@ -177,26 +405,27 @@ td b{font-weight:500;color:var(--l1)}
       <button data-sample="assets/sample-jar.jpg">Try a sample jar</button>
     </div>
     <div id="prov" class="badge none"><i></i><span>no source</span></div>
+    <p id="provWhy" class="count" style="margin-top:6px;line-height:1.55"></p>
   </fieldset>
 
   <fieldset><legend>Sampled colour</legend>
-    <div class="swatch" id="sw">—</div>
+    <div class="swatch" id="sw">not set</div>
     <div class="bands">
       <div id="b0"><span>SHADOW</span></div>
       <div id="b1"><span>MIDTONE</span></div>
       <div id="b2"><span>HIGHLIGHT</span></div>
     </div>
     <table>
-      <tr><td><b>color_captured</b></td><td id="t-hex">—</td></tr>
-      <tr><td>lightness <b>L</b></td><td id="t-L">—</td></tr>
-      <tr><td>chroma <b>C</b></td><td id="t-C">—</td></tr>
-      <tr><td>hue <b>h</b></td><td id="t-h">—</td></tr>
-      <tr><td>reads as</td><td id="t-hue">—</td></tr>
-      <tr><td>pixels sampled</td><td id="t-n">—</td></tr>
-      <tr><td>clipped highlights</td><td id="t-clip">—</td></tr>
-      <tr><td>white balance</td><td id="t-wb">—</td></tr>
-      <tr id="r-raw" hidden><td><b>as shot</b>, no white point</td><td id="t-raw">—</td></tr>
-      <tr id="r-killed" hidden><td>correction</td><td id="t-killed">—</td></tr>
+      <tr><td><b>color_captured</b></td><td id="t-hex">not set</td></tr>
+      <tr><td>lightness <b>L</b></td><td id="t-L">not set</td></tr>
+      <tr><td>chroma <b>C</b></td><td id="t-C">not set</td></tr>
+      <tr><td>hue <b>h</b></td><td id="t-h">not set</td></tr>
+      <tr><td>reads as</td><td id="t-hue">not set</td></tr>
+      <tr><td>pixels sampled</td><td id="t-n">not set</td></tr>
+      <tr><td>clipped highlights</td><td id="t-clip">not set</td></tr>
+      <tr><td>white balance</td><td id="t-wb">not set</td></tr>
+      <tr id="r-raw" hidden><td><b>as shot</b>, no white point</td><td id="t-raw">not set</td></tr>
+      <tr id="r-killed" hidden><td>correction</td><td id="t-killed">not set</td></tr>
     </table>
   </fieldset>
 
@@ -290,6 +519,8 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createResinCultureJarModel, createJarLights, LIGHTING } from './src/createJarModel.js';
 import { makeTemplatePack, CONFIG } from './src/labelArtTemplate.js';
 import { AROMA, FLAVOUR, TERROIR, EXPERIENCE, ALL_AROMA } from './src/taxonomy.js';
+import { stitchWrap, TURNS } from './src/stitchWrap.js';
+import { WRAP } from './src/labelArtTemplate.js';
 import { converter, formatHex, differenceEuclidean } from 'culori';
 
 /* =====================================================================
@@ -438,7 +669,11 @@ function whiteGains() {
 
 
 function analyse() {
-  if (!S.media) return;
+  // Guard the PIXELS, not the media element. Sampling reads the `frame`
+  // canvas; S.media is only the thing that last drew into it, and a captured
+  // still has no live element behind it at all. Testing S.media here meant
+  // every camera capture bailed on this line and reported success anyway.
+  if (!S.source || !frame.width || !frame.height) return;
   const px = samplePixels(S.ring.x, S.ring.y, S.ring.r);
   if (px.length < 60) { out.textContent = 'Ring is off the image or too small.'; return; }
 
@@ -551,30 +786,608 @@ function setProvenance(kind) {
   else { el.className = 'badge none'; el.innerHTML = '<i></i><span>no source</span>'; }
 }
 
-async function useCamera() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1920 } }, audio: false,
+/* =====================================================================
+   SHOOT, THEN TUNE
+
+   Two modes with a shutter between them, instead of one mode that sampled a
+   live feed. Sampling a moving picture meant the number changed every 400ms
+   depending on how steady your hand was, and there was never a frame you
+   could point at and say "that one". Now there is: the shutter freezes a
+   still, and every reading afterwards refers to that exact image.
+
+   It also makes the provenance claim honest. `in_hand` is set at the shutter,
+   because that is the instant a jar was in front of this device's lens. A
+   camera merely being switched on is not a capture and no longer claims to be.
+   ===================================================================== */
+/* =====================================================================
+   THE SESSION
+
+   phase 'outside' : TURNS shots around the jar, stream stays open between
+                     them so it feels like a camera and not a form
+   phase 'inside'  : one shot down into the open jar, which freezes and
+                     hands over to the colour sampler
+   phase 'build'   : stitch, then generate
+   ===================================================================== */
+const CAP = {
+  route: null,               // 'photo' | 'artwork', chosen before anything else
+  phase: 'outside',
+  min: 4,                    // fewest arcs that cover the jar
+  max: TURNS,                // more than this and the arcs just overlap
+  outside: [], top: null, bottom: null, inside: null, wrap: null,
+  // How each face arrived, kept because it is a different kind of claim:
+  // a photographed cap is this jar's cap, a file is the artwork for that cap.
+  topSrc: null, bottomSrc: null,
+  art: { img: null, mode: 'full', w: 0.34, y: 0.5, src: null },   // src: 'peeled' | 'file'
+  insideSrc: null,
+};
+
+/**
+ * Square any image for a face that is read head on.
+ *
+ * The camera path already produces a square by cropping the sensor frame, so
+ * a file has to arrive the same shape or the cap texture stretches. Centre
+ * crop rather than letterbox: a band of background around a cap print reads
+ * as a mistake, a slightly tight crop reads as a crop.
+ */
+function squareOf(img, max = 2048) {
+  const side = Math.min(img.width, img.height);
+  const out = mkc(Math.min(side, max), Math.min(side, max));
+  out.getContext('2d').drawImage(
+    img, (img.width - side) / 2, (img.height - side) / 2, side, side,
+    0, 0, out.width, out.height);
+  return out;
+}
+
+/* =====================================================================
+   PROVENANCE, GRADED AT THE WEAKEST PART
+   ===================================================================== */
+const TIER_OF = { photo: 'in_hand', peeled: 'in_hand', file: 'uploaded' };
+const RANK = { in_hand: 2, uploaded: 1, declared: 0 };
+
+/** Every part that actually exists, with how it arrived. */
+function parts() {
+  const p = [];
+  if (CAP.route === 'photo' && CAP.outside.length) p.push(['label', 'photo']);
+  if (CAP.route === 'artwork' && CAP.art.img) p.push(['label', CAP.art.src]);
+  if (CAP.top) p.push(['top', CAP.topSrc]);
+  if (CAP.bottom) p.push(['base', CAP.bottomSrc]);
+  if (CAP.inside) p.push(['inside', CAP.insideSrc]);
+  return p.filter(([, src]) => !!src);
+}
+
+/**
+ * The entry is only as attested as its least attested piece. Recomputed from
+ * scratch every time rather than nudged, so no sequence of retakes can leave
+ * a badge claiming more than the parts currently loaded support.
+ */
+function recomputeProvenance() {
+  const ps = parts();
+  if (!ps.length) { setProvenance('declared'); return; }
+  let worst = 'in_hand';
+  for (const [, src] of ps) {
+    const t = TIER_OF[src] ?? 'declared';
+    if (RANK[t] < RANK[worst]) worst = t;
+  }
+  setProvenance(worst);
+  const weak = ps.filter(([, src]) => TIER_OF[src] !== 'in_hand').map(([n]) => n);
+  // "label, top and base", not "label and top and base".
+  const list = weak.length < 2 ? weak[0]
+    : weak.slice(0, -1).join(', ') + ' and ' + weak[weak.length - 1];
+  $('provWhy').textContent = weak.length
+    ? `Uploaded because the ${list} came from a file. `
+      + `Photograph every part here and it reads as captured in session.`
+    : 'Every part was photographed in this session.';
+}
+
+/** Both faces are required when the jar is being assembled out of files. */
+function facesReady() {
+  return CAP.route !== 'artwork' || (!!CAP.top && !!CAP.bottom);
+}
+
+/** How good the label will be at the number of shots taken so far. */
+function coverage(n) {
+  if (n < CAP.min) return null;
+  const deg = 360 / n;
+  // sampling density at the edge of each arc, relative to its centre
+  const edge = Math.cos((deg / 2) * Math.PI / 180);
+  return { deg: Math.round(deg), edge: Math.round(edge * 100),
+           word: n >= 6 ? 'sharp all the way round'
+               : n === 5 ? 'slightly soft at the joins'
+               : 'usable, softest a third of the way between shots' };
+}
+
+/* The wrap the jar factory wants, so every path can be measured against one
+   number instead of guessing. */
+const TARGET = { w: 4096, h: Math.round(4096 / WRAP.body.aspect) };
+
+/**
+ * Enlarge an image toward a target width in halving steps.
+ *
+ * Worth being blunt about what this is: RESAMPLING. It cannot invent detail
+ * that the file does not contain, and a 600px label will still be soft at
+ * 4096 however it is scaled. Stepping x2 at a time beats one enormous jump
+ * because each step feeds the filter neighbouring pixels rather than a wide
+ * sparse stride, but the honest fix for a small file is a bigger file, which
+ * is why the panel states the source resolution instead of hiding it.
+ */
+function upscaleTo(img, targetW) {
+  let cur = img, w = img.width, h = img.height;
+  if (w >= targetW) return cur;
+  while (w < targetW) {
+    const nw = Math.min(targetW, w * 2);
+    const nh = Math.round(h * (nw / w));
+    const c = mkc(nw, nh);
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(cur, 0, 0, nw, nh);
+    cur = c; w = nw; h = nh;
+  }
+  return cur;
+}
+
+/**
+ * Lay a flat label onto a full wrap.
+ *
+ * 'full' means the artwork IS the circumference, so it is drawn edge to edge
+ * and any aspect mismatch is taken as a cover crop with the vertical offset
+ * under the slider. 'card' means the artwork is a sticker occupying part of
+ * the way round, so the rest of the wrap is the jar's own surface colour and
+ * the label sits on it at the chosen width.
+ */
+function composeWrapFromLabel(img, { mode, w, y }) {
+  const out = mkc(TARGET.w, TARGET.h);
+  const g = out.getContext('2d');
+  g.imageSmoothingQuality = 'high';
+  const srcA = img.width / img.height;
+
+  if (mode === 'full') {
+    // cover: fill the wrap, crop whichever axis is long
+    const wrapA = TARGET.w / TARGET.h;
+    let dw = TARGET.w, dh = TARGET.w / srcA;
+    if (srcA > wrapA) { dh = TARGET.h; dw = TARGET.h * srcA; }
+    const dx = (TARGET.w - dw) / 2;
+    const dy = (TARGET.h - dh) * y;
+    g.drawImage(img, dx, dy, dw, dh);
+    // The wrap is a loop: whatever hangs off one edge belongs at the other,
+    // or the join between the last column and the first is a hard cut.
+    if (dx < 0 || dx + dw > TARGET.w) {
+      g.drawImage(img, dx - TARGET.w, dy, dw, dh);
+      g.drawImage(img, dx + TARGET.w, dy, dw, dh);
+    }
+    return out;
+  }
+
+  // card: ground first, then the sticker
+  g.fillStyle = CONFIG.ground.color;
+  g.fillRect(0, 0, TARGET.w, TARGET.h);
+  const cw = TARGET.w * w;
+  const ch = Math.min(TARGET.h * 0.94, cw / srcA);
+  const cx = (TARGET.w - cw) / 2;
+  const cy = (TARGET.h - ch) * y;
+  g.save();
+  g.shadowColor = 'rgba(0,0,0,.5)'; g.shadowBlur = TARGET.h * 0.03;
+  g.shadowOffsetY = TARGET.h * 0.006;
+  g.drawImage(img, cx, cy, cw, ch);
+  g.restore();
+  return out;
+}
+
+const mkc = (w, h) => Object.assign(document.createElement('canvas'), { width: w, height: h });
+
+/**
+ * The guide box, in the captured image's pixels.
+ *
+ * The preview is object-fit:cover, so what is on screen is a CROP of the
+ * sensor frame and the two coordinate systems do not agree. Reading the guide
+ * straight off the screen would hand the unwrap a radius measured in the
+ * wrong space, and every strip would be stretched by the crop factor.
+ */
+function guideRectInFrame() {
+  const v = $('vfvid');
+  const box = v.getBoundingClientRect();
+  const g = $('vfguide').getBoundingClientRect();
+  const scale = Math.max(box.width / v.videoWidth, box.height / v.videoHeight);
+  const offX = box.left + (box.width - v.videoWidth * scale) / 2;
+  const offY = box.top + (box.height - v.videoHeight * scale) / 2;
+  return { x: (g.left - offX) / scale, y: (g.top - offY) / scale,
+           w: g.width / scale, h: g.height / scale };
+}
+
+const TURN_WORD = ['Fill the box with the jar', 'Turn the jar a sixth of a turn',
+                   'Keep turning the same way', 'Halfway round',
+                   'Keep going, same direction', 'Last one'];
+
+function paintSession() {
+  const n = CAP.outside.length;
+  // On the artwork route there are no outside shots to wait for; the label is
+  // done as soon as a file is loaded.
+  const done = CAP.route === 'artwork' ? !!CAP.art.img : n >= CAP.min;
+  $('startTop').hidden = false;
+  $('startBottom').hidden = false;
+  $('fileTop').hidden = false;
+  $('fileBottom').hidden = false;
+  recomputeProvenance();
+  const faceWord = (v, src) => !v ? '' : src === 'file' ? ' (file)' : ' (photo)';
+  $('startLabel').hidden = CAP.route !== 'artwork';
+  $('artPick').hidden = CAP.route !== 'artwork';
+  $('startTop').textContent = CAP.top ? 'Retake the top' : 'Shoot the top';
+  $('startBottom').textContent = CAP.bottom ? 'Retake the base' : 'Shoot the base';
+  $('fileTop').textContent = (CAP.top ? 'Replace top' : 'Top from a file')
+    + faceWord(CAP.top, CAP.topSrc);
+  $('fileBottom').textContent = (CAP.bottom ? 'Replace base' : 'Base from a file')
+    + faceWord(CAP.bottom, CAP.bottomSrc);
+  $('oCount').textContent = `${n}/${CAP.min}` + (n > CAP.min ? ` (+${n - CAP.min})` : '');
+  for (const li of $('steps').children) {
+    const k = li.dataset.s;
+    li.classList.toggle('on', k === CAP.phase);
+    li.classList.toggle('done',
+      (k === 'outside' && done && CAP.route !== 'artwork')
+      || (k === 'top' && !!CAP.top)
+      || (k === 'bottom' && !!CAP.bottom) || (k === 'inside' && !!CAP.inside));
+  }
+  // Still offered past the minimum: the extra shots are the whole reason the
+  // ceiling is six and not four.
+  $('startOutside').hidden = CAP.route === 'artwork' || n >= CAP.max;
+  $('startOutside').textContent = !n ? 'Start capture'
+    : n < CAP.min ? 'Continue outside shots'
+    : `Add a sharper shot (${n} of ${CAP.max})`;
+  $('startInside').hidden = !done || !!CAP.inside;
+  $('generate').hidden = !(done && facesReady() && CAP.inside && S.colour);
+  $('resetSess').hidden = !n;
+
+  $('thumbs').innerHTML = Array.from({ length: CAP.max }, (_, i) => {
+    const shot = CAP.outside[i];
+    return shot
+      ? `<div class="t"><img src="${shot.url}" alt=""><b>${i + 1}</b>` +
+        `<button data-re="${i}">redo</button></div>`
+      : `<div class="t empty"><b>${i + 1}</b></div>`;
+  }).join('');
+  for (const b of $('thumbs').querySelectorAll('[data-re]')) {
+    b.addEventListener('click', () => {
+      // Drop this shot and everything after it. The stitcher assumes shots are
+      // an even turn apart in order, so replacing one in the middle would put
+      // shot 4's arc where shot 3's belongs.
+      CAP.outside.length = +b.dataset.re;
+      paintSession();
+      useCamera();
     });
-    const v = document.createElement('video');
-    v.srcObject = stream; v.playsInline = true; v.muted = true;
-    await v.play();
-    S.media = v; S.source = 'camera';
-    frame.width = v.videoWidth; frame.height = v.videoHeight;
-    fitRing(); showStage(); setProvenance('in_hand');
-    (function pump() {
-      if (S.source !== 'camera') return;
-      fctx.drawImage(v, 0, 0, frame.width, frame.height);
-      drawRing();
-      requestAnimationFrame(pump);
-    })();
-    setInterval(() => { if (S.source === 'camera') analyse(); }, 400);
-    out.textContent = 'Live. This frame carries no EXIF, which is part of why it earns the higher tier.';
-  } catch (e) {
-    setProvenance('declared');
-    out.textContent = 'No camera available (' + e.name + '). Use a photo instead; it will be tagged as uploaded.';
+  }
+
+  const cov = CAP.route === 'artwork' ? null : coverage(n);
+  $('sessHint').textContent = !done
+    ? (CAP.route === 'artwork'
+        ? 'Load the label image, then the top and the base, then shoot the inside '
+          + 'of the jar for the colour.'
+        : `Turn the jar the same way each time. ${CAP.min} shots is the minimum, `
+          + `${CAP.max} gives the sharpest label.`)
+    : !facesReady()
+      ? `Add the top and the base. Either photograph them or load the artwork: `
+        + `a jar built from files with a generic cap would be half yours and `
+        + `half template, with nothing on it saying which half is which.`
+    : !CAP.inside
+      ? (cov ? `${n} shots, ${cov.deg} degrees each, ${cov.word}. `
+             : '') + 'Now open the jar and photograph what is inside.'
+    : !S.colour ? 'Drag the ring onto the medicine to read its colour.'
+    : 'Ready. Generating uses the six outside shots for the label and the inside shot for the colour.';
+}
+
+const STEP_COPY = {
+  label:  ['The peeled label', 'Lay it flat and fill the box, left edge to right edge'],
+  top:    ['The top', 'Straight down onto the cap'],
+  bottom: ['The base', 'Turn the jar over, straight onto the bottom'],
+  inside: ['The inside', 'Open the jar, fill the circle with the opening'],
+};
+
+function paintPips() {
+  const n = CAP.outside.length;
+  // Six pips always, so the ceiling is visible from the first shot. The first
+  // four are solid because they are required; the last two are ringed because
+  // they are the ones that buy sharpness rather than completeness.
+  $('vfpips').innerHTML = CAP.phase !== 'outside' ? '' :
+    Array.from({ length: CAP.max }, (_, i) => {
+      const cls = i < n ? 'done' : i === n ? 'now' : '';
+      return `<i class="${cls}${i >= CAP.min ? ' opt' : ''}"></i>`;
+    }).join('');
+
+  if (CAP.phase === 'outside') {
+    const need = Math.max(0, CAP.min - n);
+    $('vfstep').innerHTML =
+      `<b>Shot ${Math.min(n + 1, CAP.max)}${need ? ` of ${CAP.min}` : ` of up to ${CAP.max}`}</b>`
+      + `<span>${need ? TURN_WORD[Math.min(n, TURN_WORD.length - 1)]
+                      : 'Enough to build the label. Keep going for a sharper one.'}</span>`;
+  } else {
+    const [t, sub2] = STEP_COPY[CAP.phase] ?? STEP_COPY.inside;
+    $('vfstep').innerHTML = `<b>${t}</b><span>${sub2}</span>`;
+  }
+  $('vfguide').className = CAP.phase === 'outside' ? 'jar'
+    : CAP.phase === 'label' ? 'flat' : '';
+
+  // "Done" appears once the floor is met, and reads as Skip on the two
+  // optional steps so it is never mistaken for cancelling out of the session.
+  const nx = $('vfnext');
+  if (CAP.phase === 'outside') {
+    nx.hidden = n < CAP.min;
+    nx.textContent = 'Done, next';
+  } else if (CAP.phase === 'top' || CAP.phase === 'bottom') {
+    nx.hidden = false;
+    nx.textContent = 'Skip';
+  } else {
+    nx.hidden = true;
   }
 }
+
+/** Advance to whatever comes after the current step, and open the camera for
+ *  it. One place decides the order so the shutter and the Skip button can
+ *  never disagree about what is next. */
+const NEXT = { outside: 'top', label: 'top', top: 'bottom', bottom: 'inside' };
+function advance() {
+  const to = NEXT[CAP.phase];
+  if (!to) return;
+  CAP.phase = to;
+  paintPips(); paintSession();
+  useCamera();
+}
+
+let vfStream = null;
+
+function setMode(m) { document.body.dataset.mode = m; $('vf').hidden = m !== 'shoot'; }
+// Declare the starting mode rather than leaving the attribute absent. Any CSS
+// or check written against body[data-mode] silently misses an unset attribute,
+// so "no mode" is a state waiting to be a bug.
+setMode('idle');
+// The session panel stays hidden until a route is chosen, so the first screen
+// asks one question instead of showing controls for both answers at once.
+$('sess').hidden = true;
+paintPips();
+paintSession();
+
+function stopStream() {
+  if (!vfStream) return;
+  for (const t of vfStream.getTracks()) t.stop();   // releases the camera light
+  vfStream = null;
+  $('vfvid').srcObject = null;
+}
+
+let camBusy = false;
+
+async function useCamera() {
+  // Reentrancy guard. Tapping twice before the permission sheet resolves
+  // opened two streams and overwrote the handle to the first, so it could
+  // never be stopped and the camera indicator stayed lit for the session.
+  if (camBusy) return;
+  camBusy = true;
+  stopStream();
+  $('cam').disabled = $('retake').disabled = true;
+  out.textContent = 'Waiting for camera permission.';
+  try {
+    vfStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 } }, audio: false,
+    });
+    const v = $('vfvid');
+    v.srcObject = vfStream; v.playsInline = true; v.muted = true;
+    await v.play();
+    setMode('shoot');
+    out.textContent = 'Viewfinder open. Nothing is sampled until you take the picture.';
+  } catch (e) {
+    stopStream();
+    setProvenance('declared');
+    setMode('idle');
+    out.textContent = 'No camera available (' + e.name + '). Use a photo instead; it will be tagged as uploaded.';
+  } finally {
+    camBusy = false;
+    $('cam').disabled = $('retake').disabled = false;
+  }
+}
+
+function takeShot() {
+  const v = $('vfvid');
+  if (!v.videoWidth) return;                 // shutter pressed before the first frame
+
+  // ---- OUTSIDE: collect, stay in the viewfinder, keep the stream open ----
+  if (CAP.phase === 'outside') {
+    const c = mkc(v.videoWidth, v.videoHeight);
+    c.getContext('2d').drawImage(v, 0, 0);
+    // The guide is read NOW, at the moment of capture, because the layout can
+    // change under it: a rotation between shots moves the box.
+    CAP.outside.push({ src: c, rect: guideRectInFrame(), url: c.toDataURL('image/jpeg', 0.6) });
+    $('vfflash').classList.remove('go'); void $('vfflash').offsetWidth;
+    $('vfflash').classList.add('go');
+    if (CAP.outside.length >= CAP.max) {
+      // At the ceiling the decision is made for them: another arc would
+      // overlap the last one almost completely.
+      advance();
+      out.textContent = 'Outside done at ' + CAP.max + ' shots. Now the top.';
+      return;
+    }
+    paintPips(); paintSession();
+    return;
+  }
+
+  // ---- LABEL: the peeled label, cropped to the guide ----
+  if (CAP.phase === 'label') {
+    const r = guideRectInFrame();
+    const c = mkc(Math.round(r.w), Math.round(r.h));
+    c.getContext('2d').drawImage(v, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height);
+    CAP.art.img = c;
+    CAP.art.src = 'peeled';
+    describeArt(c);
+    advance();
+    out.textContent = 'Label captured in session. It counts the same as shooting the jar.';
+    return;
+  }
+
+  // ---- TOP: one square shot of the cap ----
+  if (CAP.phase === 'top') {
+    const side = Math.min(v.videoWidth, v.videoHeight);
+    const c = mkc(side, side);
+    c.getContext('2d').drawImage(v, (v.videoWidth - side) / 2, (v.videoHeight - side) / 2,
+      side, side, 0, 0, side, side);
+    CAP.top = c;
+    CAP.topSrc = 'photo';
+    advance();
+    out.textContent = 'Top captured. It prints on the cap.';
+    return;
+  }
+
+  // ---- BOTTOM: one shot of the base, kept as a square crop ----
+  if (CAP.phase === 'bottom') {
+    const side = Math.min(v.videoWidth, v.videoHeight);
+    const c = mkc(side, side);
+    c.getContext('2d').drawImage(v, (v.videoWidth - side) / 2, (v.videoHeight - side) / 2,
+      side, side, 0, 0, side, side);
+    CAP.bottom = c;
+    CAP.bottomSrc = 'photo';
+    advance();
+    out.textContent = 'Base captured. It prints on the underside of the jar.';
+    return;
+  }
+
+  // ---- INSIDE: freeze, and hand over to the sampler ----
+  // Full sensor resolution, not the on-screen size. The preview is
+  // object-fit:cover and therefore cropped; the sample must not inherit that.
+  frame.width = v.videoWidth; frame.height = v.videoHeight;
+  fctx.drawImage(v, 0, 0, frame.width, frame.height);
+  stopStream();
+  // 'still', deliberately not 'camera': the ring handlers re-sample on drag
+  // for every source EXCEPT 'camera', which used to rely on the live interval.
+  S.media = null; S.source = 'still';
+  fitRing(); showStage(); drawRing(); analyse();
+  // Fail loudly. A capture that samples nothing used to still say it worked.
+  if (!S.colour) {
+    out.textContent = 'Captured, but the colour could not be read from that frame. '
+      + 'Try again with more light on the jar.';
+    return;
+  }
+  CAP.inside = frame;
+  CAP.insideSrc = 'photo';
+  $('retake').hidden = false;
+  setMode('tune');
+  paintSession();
+  out.textContent = 'Captured in session. This frame carries no EXIF, which is part of '
+    + 'why it earns the higher tier. Drag the ring onto the medicine, then shift-drag '
+    + 'a neutral area for white balance.';
+}
+
+function cancelShot() {
+  stopStream();
+  setMode(S.source ? 'tune' : 'idle');
+  out.textContent = S.source ? '' : 'Camera closed. Nothing was captured.';
+}
+
+/* ---- the chooser ---- */
+function chooseRoute(r) {
+  CAP.route = r;
+  $('route').hidden = true;
+  $('art').hidden = r !== 'artwork';
+  $('sess').hidden = false;
+  // The outside step only exists on the photo route; on the artwork route the
+  // session is the inside shot plus an optional base.
+  $('steps').children[0].hidden = r === 'artwork';
+  $('startOutside').hidden = r === 'artwork';
+  $('thumbs').hidden = r === 'artwork';
+  // 'top', not 'inside'. Starting at the inside walked the guided flow past
+  // the two faces entirely, and the artwork route is the one that needs them
+  // most: nothing else on the jar would be real.
+  if (r === 'artwork') { CAP.phase = 'top'; }
+  paintPips(); paintSession();
+}
+$('routePhoto').addEventListener('click', () => chooseRoute('photo'));
+$('routeArt').addEventListener('click', () => chooseRoute('artwork'));
+
+/* ---- artwork ---- */
+async function loadArt(file) {
+  const img = await createImageBitmap(file);
+  CAP.art.img = img;
+  CAP.art.src = 'file';
+  describeArt(img);
+  paintArt();
+  paintSession();
+}
+
+/** Report what the source can actually carry, for either way it arrived. */
+function describeArt(img) {
+  const short = img.width < TARGET.w;
+  $('artRes').className = short ? 'warn' : 'ok';
+  $('artRes').innerHTML = `Source ${img.width} x ${img.height}. `
+    + `The wrap is ${TARGET.w} x ${TARGET.h}.<br>`
+    + (short
+      ? `It will be enlarged ${(TARGET.w / img.width).toFixed(1)}x, which softens it. `
+        + `Enlarging cannot add detail that is not in the file.`
+      : `Enough resolution to print the wrap at full size.`);
+}
+function paintArt() {
+  if (!CAP.art.img) return;
+  const wrap = composeWrapFromLabel(CAP.art.img, CAP.art);
+  const c = $('artPrev');
+  c.width = c.clientWidth || 320;
+  c.height = Math.round(c.width / WRAP.body.aspect);
+  c.getContext('2d').drawImage(wrap, 0, 0, c.width, c.height);
+}
+$('artPick').addEventListener('click', () => {
+  const i = document.createElement('input');
+  i.type = 'file'; i.accept = 'image/*';
+  i.onchange = () => { if (i.files[0]) loadArt(i.files[0]); };
+  i.click();
+});
+for (const b of $('artMode').children) {
+  b.addEventListener('click', () => {
+    CAP.art.mode = b.dataset.m;
+    for (const o of $('artMode').children) o.classList.toggle('on', o === b);
+    $('artWrow').hidden = CAP.art.mode !== 'card';
+    paintArt();
+  });
+}
+$('artW').addEventListener('input', (e) => { CAP.art.w = +e.target.value; paintArt(); });
+$('artY').addEventListener('input', (e) => { CAP.art.y = +e.target.value; paintArt(); });
+
+/* ---- the base ---- */
+function pickFace(which) {
+  const i = document.createElement('input');
+  i.type = 'file'; i.accept = 'image/*';
+  i.onchange = async () => {
+    if (!i.files[0]) return;
+    const bmp = await createImageBitmap(i.files[0]);
+    CAP[which] = squareOf(bmp);
+    CAP[which + 'Src'] = 'file';
+    out.textContent = (which === 'top' ? 'Top' : 'Base') + ' artwork loaded.';
+    paintSession();
+  };
+  i.click();
+}
+$('fileTop').addEventListener('click', () => pickFace('top'));
+$('fileBottom').addEventListener('click', () => pickFace('bottom'));
+
+$('startLabel').addEventListener('click', () => { CAP.phase = 'label'; paintPips(); useCamera(); });
+$('startTop').addEventListener('click', () => { CAP.phase = 'top'; paintPips(); useCamera(); });
+$('startBottom').addEventListener('click', () => { CAP.phase = 'bottom'; paintPips(); useCamera(); });
+$('vfnext').addEventListener('click', advance);
+
+$('startOutside').addEventListener('click', () => { CAP.phase = 'outside'; paintPips(); useCamera(); });
+$('startInside').addEventListener('click', () => { CAP.phase = 'inside'; paintPips(); useCamera(); });
+$('resetSess').addEventListener('click', () => {
+  CAP.outside = []; CAP.inside = null; CAP.top = null; CAP.bottom = null;
+  CAP.topSrc = null; CAP.bottomSrc = null; CAP.insideSrc = null;
+  CAP.art.img = null; CAP.art.src = null;
+  CAP.wrap = null; CAP.phase = 'outside';
+  S.colour = null; S.source = null; S.media = null;
+  $('shot').hidden = true; $('empty').hidden = false;
+  setProvenance('declared'); setMode('idle'); paintPips(); paintSession();
+  out.textContent = 'Session cleared.';
+});
+$('vfshoot').addEventListener('click', takeShot);
+$('vfcancel').addEventListener('click', cancelShot);
+$('retake').addEventListener('click', useCamera);
+// A phone can be locked or backgrounded mid-shot; do not hold the camera open.
+addEventListener('pagehide', stopStream);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && document.body.dataset.mode === 'shoot') cancelShot();
+});
+addEventListener('keydown', (e) => {
+  if (document.body.dataset.mode !== 'shoot') return;
+  if (e.key === 'Escape') cancelShot();
+  if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); takeShot(); }
+});
 
 async function useImage(src, label) {
   S.source = 'upload';
@@ -584,8 +1397,13 @@ async function useImage(src, label) {
   S.media = img;
   frame.width = img.naturalWidth; frame.height = img.naturalHeight;
   fctx.drawImage(img, 0, 0);
-  fitRing(); showStage(); setProvenance('uploaded');
+  fitRing(); showStage();
+  // An uploaded photo of the inside is still the inside; it is the TIER that
+  // differs, and that is now decided across every part rather than here.
+  CAP.inside = frame; CAP.insideSrc = 'file';
   drawRing(); analyse();
+  $('retake').hidden = true;      // never offer to "retake" a file off disk
+  setMode('tune');
   out.textContent = (label || 'Photo') + ' loaded. Drag the ring over the medicine, then shift-drag a neutral area for white balance.';
 }
 
@@ -661,13 +1479,24 @@ cam.position.set(0, 56, 104); cam.lookAt(0, 19, 0);
 scene.add(createJarLights(LIGHTING.studio));
 
 let jar = null, tPack = null;
-function paintJar(hexColour) {
-  if (!tPack) tPack = makeTemplatePack({ ...CONFIG, card: { ...CONFIG.card, show: false } });
+function paintJar(hexColour, art, base, capTop) {
+  // With artwork we rebuild the pack every time: the wrap IS the pack, so a
+  // cached one would keep painting the previous session's label.
+  const pack = art
+    ? makeTemplatePack({ ...CONFIG, name: 'Captured jar',
+                         art: { body: art,
+                                ...(base ? { bottom: base } : {}),
+                                ...(capTop ? { top: capTop } : {}) } })
+    : (tPack ||= makeTemplatePack({ ...CONFIG, card: { ...CONFIG.card, show: false } }));
+  const tPackUsed = pack;
   if (jar) { jar.userData.sculptRuntime.dispose(); scene.remove(jar); }
   jar = createResinCultureJarModel({
-    label: { ...tPack, contents: { color: hexColour, attenuation: hexColour, blockout: 0xcccccc },
+    label: { ...tPackUsed,
+             contents: { color: hexColour, attenuation: hexColour, blockout: 0xcccccc },
              lighting: LIGHTING.studio },
-    textureSize: 512,
+    // The wrap is only worth its full resolution when there is a photograph in
+    // it. The drawn placeholder does not benefit and the preview redraws often.
+    textureSize: art ? 4096 : 512,
     anisotropy: renderer.capabilities.getMaxAnisotropy(),
   });
   jar.userData.sculptRuntime.setOpen(2);
@@ -675,6 +1504,90 @@ function paintJar(hexColour) {
   renderer.render(scene, cam);
 }
 (function loop() { requestAnimationFrame(loop); if (jar) renderer.render(scene, cam); })();
+
+/* =====================================================================
+   GENERATE
+
+   Six photographs become one wrap, the inside shot becomes the contents, and
+   the existing jar factory does the rest. Nothing is uploaded and nothing is
+   asked of a server: the whole reconstruction happens on the device that took
+   the pictures, which is also why the privacy copy on the home page is a
+   statement rather than a promise.
+   ===================================================================== */
+$('generate').addEventListener('click', async () => {
+  const ready = CAP.route === 'artwork' ? !!CAP.art.img : CAP.outside.length >= CAP.min;
+  if (!ready || !facesReady() || !S.colour) return;
+  const btn = $('generate');
+  btn.disabled = true;
+  out.textContent = 'Unwrapping six shots into one label.';
+  // Yield once so the button's disabled state actually paints before the
+  // stitch blocks the main thread.
+  await new Promise((r) => setTimeout(r, 16));
+  try {
+    if (CAP.route === 'artwork') {
+      // Enlarge FIRST, compose second. Composing at the source size and then
+      // scaling the finished wrap would resample the ground and the shadow as
+      // well, and soften edges that were never soft.
+      const big = upscaleTo(CAP.art.img, Math.round(TARGET.w * (CAP.art.mode === 'card' ? CAP.art.w : 1)));
+      CAP.wrap = composeWrapFromLabel(big, CAP.art);
+    } else {
+        // stitchWrap divides the circumference by however many shots it is
+      // given, so four and six both work with no special casing.
+      CAP.wrap = stitchWrap(CAP.outside, { width: TARGET.w, aspect: WRAP.body.aspect });
+    }
+    const art = await createImageBitmap(CAP.wrap);
+    const base = CAP.bottom ? await createImageBitmap(CAP.bottom) : null;
+    const cap = CAP.top ? await createImageBitmap(CAP.top) : null;
+    paintJar(S.colour.captured, art, base, cap);
+    showResult();
+    out.textContent = (CAP.route === 'artwork'
+      ? 'Generated from your label artwork and one inside shot.'
+      // The COUNT TAKEN, not a constant. There is no fixed number any more,
+      // and the old one printed "undefined outside shots".
+      : 'Generated from ' + CAP.outside.length + ' outside shots and one inside shot.')
+      + (CAP.top ? ' Top print applied.' : '')
+      + (CAP.bottom ? ' Base print applied.' : '');
+  } catch (e) {
+    out.textContent = 'Could not generate: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function showResult() {
+  let r = $('result');
+  if (!r) {
+    r = document.createElement('div');
+    r.id = 'result';
+    document.body.appendChild(r);
+  }
+  r.innerHTML = '<h2>Your jar</h2>' +
+    '<p>Built here, on this device, from your own photographs. The label is the ' +
+    'six outside shots unwrapped and joined; the colour inside is the reading ' +
+    'from the open jar.</p>';
+  // Closed for the reveal. The live preview keeps the jar open so you can see
+  // the colour while you tune the ring, but the payoff shot is about the
+  // LABEL that was just reconstructed, and an open jar puts its cap somewhere
+  // outside the frame and cuts the wrap in half.
+  const big = mkc(900, 900);
+  jar?.userData.sculptRuntime.setOpen(0);
+  renderer.setSize(900, 900, false);
+  cam.aspect = 1; cam.updateProjectionMatrix();
+  renderer.render(scene, cam);
+  big.getContext('2d').drawImage(renderer.domElement, 0, 0, 900, 900);
+  r.appendChild(big);
+  const strip = mkc(CAP.wrap.width / 4, CAP.wrap.height / 4);
+  strip.id = 'wrapOut';
+  strip.getContext('2d').drawImage(CAP.wrap, 0, 0, strip.width, strip.height);
+  r.appendChild(strip);
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = '<button id="rClose">Back to capture</button>' +
+                  '<button id="rSave" class="primary">Log entry</button>';
+  r.appendChild(row);
+  $('rClose').addEventListener('click', () => r.remove());
+  $('rSave').addEventListener('click', () => { r.remove(); $('save').click(); });
+}
 
 /* =====================================================================
    LOG  — the payload an entry would be written from
@@ -860,7 +1773,8 @@ addEventListener('keydown', (e) => { if (e.key === 'Escape') $('drawer').classLi
 drawAroma();
 summarise();
 
-window.__cap = { S, D, analyse, useImage, samplePixels, band, okOf, okHex, toOkLch, dE, countAll };
+window.__cap = { S, D, CAP, analyse, useImage, samplePixels, band, okOf, okHex,
+                 toOkLch, dE, countAll, paintSession, paintPips, paintJar, stitchWrap };
 </script>
 </body>
 </html>
