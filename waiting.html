@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>You are on the list / Meltshelf</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#08090B;--pane:#0F1114;--green:#51EC43;--greenGlow:rgba(81,236,67,.18);
+  --orange:#FF7A18;--silver:#EDF1F5;
+  --l1:var(--silver);--l2:rgba(237,241,245,.62);--l3:rgba(237,241,245,.34);
+  --line:rgba(237,241,245,.12);--ease:cubic-bezier(.66,0,.01,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--l1);font-family:'Archivo',system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;min-height:100vh;display:grid;place-items:center;padding:24px}
+a{color:var(--green);text-decoration:none}
+a:hover{text-decoration:underline}
+.card{width:min(480px,100%)}
+.mark{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.42em;
+  text-transform:uppercase;color:var(--l3)}
+h1{font-size:clamp(26px,5vw,36px);font-weight:800;letter-spacing:-.025em;margin-top:14px;line-height:1.1}
+.sub{margin-top:12px;font-size:14px;color:var(--l2);line-height:1.64}
+.stub{margin-top:26px;background:var(--pane);border:1px solid var(--green);border-radius:4px;
+  box-shadow:0 0 24px var(--greenGlow);padding:16px 18px;font-family:'IBM Plex Mono',monospace}
+.stub .shead{display:flex;justify-content:space-between;align-items:baseline;gap:14px;
+  padding-bottom:10px;border-bottom:1px solid var(--line)}
+.stub .shead b{font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:var(--green);font-weight:700}
+.stub .shead span{font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--orange)}
+.stub .srow{display:flex;justify-content:space-between;align-items:baseline;gap:14px;
+  padding:9px 0;border-bottom:1px solid rgba(237,241,245,.08);font-size:11px}
+.stub .srow:last-child{border-bottom:0;padding-bottom:2px}
+.stub .srow span{letter-spacing:.2em;text-transform:uppercase;color:var(--l3);flex:0 0 auto}
+.stub .srow b{font-weight:500;color:var(--l1);letter-spacing:.05em;min-width:0;text-align:right;
+  overflow-wrap:anywhere}
+.why{margin-top:22px;font-size:12.5px;line-height:1.65;color:var(--l3);
+  border-left:2px solid var(--line);padding-left:12px}
+.why b{color:var(--l2)}
+.row{display:flex;gap:10px;margin-top:26px;flex-wrap:wrap;align-items:center}
+button{font:inherit;cursor:pointer;border-radius:3px;border:1px solid var(--line);
+  background:rgba(237,241,245,.05);color:var(--l1);padding:11px 16px;font-size:13px}
+button:hover{border-color:var(--green)}
+.foot{margin-top:30px;padding-top:18px;border-top:1px solid var(--line);
+  font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--l3);display:flex;justify-content:space-between;gap:12px}
+.foot a{color:var(--l3)}
+.foot a:hover{color:var(--green);text-decoration:none}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <span class="mark">Meltshelf</span>
+  <h1>You are on the list.</h1>
+  <p class="sub">Your account exists and your email is confirmed. Early access
+     is invite only, so a shelf opens once it has been let in.</p>
+
+  <div class="stub">
+    <div class="shead"><b>Meltshelf</b><span>Pending</span></div>
+    <div class="srow"><span>Account</span><b id="who">…</b></div>
+    <div class="srow"><span>Created</span><b id="since">…</b></div>
+    <div class="srow"><span>Status</span><b style="color:var(--orange)">Awaiting approval</b></div>
+  </div>
+
+  <!-- No queue position. We do not know one and will not invent one. -->
+  <p class="why"><b>Nothing is stuck.</b> There is no number to watch and no
+     way to move up. When the account is let in this page becomes your shelf
+     on the next visit, and nothing you do here changes the timing.</p>
+
+  <div class="row">
+    <button id="check">Check again</button>
+    <button id="out">Sign out</button>
+    <span id="msg" style="font-size:12px;color:var(--l3)"></span>
+  </div>
+
+  <div class="foot">
+    <a href="./">Meltshelf</a>
+    <a href="./discover.html">Browse while you wait</a>
+  </div>
+</div>
+
+<script src="./vendor/supabase/supabase.umd.js"></script>
+<script type="module">
+import { profile, routeFor, signOut, configured, SETUP_HELP } from './src/auth.js';
+
+const $ = (id) => document.getElementById(id);
+
+async function load() {
+  if (!configured()) { $('msg').textContent = SETUP_HELP; return; }
+  const p = await profile().catch(() => null);
+  // Every route decision comes from one function, so this page cannot
+  // disagree with the guard on any other page about where someone belongs.
+  const to = routeFor(p);
+  if (to !== './waiting.html') { location.replace(to); return; }
+  $('who').textContent = p.email ?? '—';
+  $('since').textContent = p.created_at
+    ? new Date(p.created_at).toLocaleDateString(undefined,
+        { year: 'numeric', month: 'short', day: 'numeric' })
+    : '—';
+}
+
+$('check').addEventListener('click', async () => {
+  $('msg').textContent = 'Checking.';
+  const p = await profile().catch(() => null);
+  const to = routeFor(p);
+  if (to !== './waiting.html') { location.replace(to); return; }
+  $('msg').textContent = 'Still pending.';
+});
+
+$('out').addEventListener('click', async () => {
+  await signOut();
+  location.replace('./login.html');
+});
+
+load();
+</script>
+</body>
+</html>

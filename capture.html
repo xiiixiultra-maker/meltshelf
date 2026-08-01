@@ -81,7 +81,10 @@ body[data-mode="shoot"] #toShelf{display:none}
    the sampling ring. Jar-shaped for the outside, where it sets the silhouette
    the unwrap measures its geometry from: get this wrong and every strip is
    unwrapped against the wrong radius. */
-#vfguide.jar{width:min(74vw,330px);aspect-ratio:50 / 42;border-radius:14px}
+/* Aspect comes from the chosen jar, not from a constant: a squat jar framed
+   in a tall box hands the unwrap the wrong radius. */
+#vfguide.jar{width:min(74vw,330px);aspect-ratio:var(--guide-aspect, 1.19);
+  border-radius:14px}
 /* A peeled label is a long thin rectangle, so the guide is too: it is the
    crop the wrap is taken from, not a suggestion. */
 #vfguide.flat{width:min(92vw,560px);aspect-ratio:7.194;border-radius:4px}
@@ -104,12 +107,13 @@ body[data-mode="shoot"] #toShelf{display:none}
 @keyframes flash{from{opacity:.85}to{opacity:0}}
 
 /* ---------------- route chooser ---------------- */
-#route{position:fixed;inset:0;z-index:50;background:var(--bg);display:grid;
+#shape{z-index:51!important}
+#route,#shape{position:fixed;inset:0;z-index:50;background:var(--bg);display:grid;
   place-items:center;padding:24px}
-#route .in{max-width:760px;width:100%}
-#route h2{font-size:clamp(20px,3.4vw,30px);font-weight:800;letter-spacing:-.02em}
-#route .sub{margin-top:9px;font-size:13px;color:var(--l2);line-height:1.6;max-width:56ch}
-#route .opts{display:grid;gap:12px;margin-top:24px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+#route .in,#shape .in{max-width:760px;width:100%}
+#route h2,#shape h2{font-size:clamp(20px,3.4vw,30px);font-weight:800;letter-spacing:-.02em}
+#route .sub,#shape .sub{margin-top:9px;font-size:13px;color:var(--l2);line-height:1.6;max-width:56ch}
+#route .opts,#shape .opts{display:grid;gap:12px;margin-top:24px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
 .opt{text-align:left;padding:18px;border:1px solid var(--line);border-radius:6px;
   background:var(--pane);cursor:pointer;transition:border-color .2s var(--ease)}
 .opt:hover{border-color:var(--green);background:var(--pane)}
@@ -293,7 +297,29 @@ td b{font-weight:500;color:var(--l1)}
   </div>
 </div>
 
-<div id="route"><div class="in">
+<div id="shape"><div class="in">
+  <h2>Which jar is it?</h2>
+  <p class="sub">Pick the shape before you shoot. The guide in the viewfinder
+     is the silhouette the label is unwrapped against, so the wrong shape here
+     stretches every photo you take afterwards.</p>
+  <div class="opts">
+    <button class="opt" id="shapeTall">
+      <b>Tall</b>
+      <span>Straight sides, roughly as tall as it is wide, black screw cap,
+            label printed or wrapped on the glass.</span>
+      <em>height / width 0.84</em>
+    </button>
+    <button class="opt alt" id="shapeSleeve">
+      <b>Squat, wooden cap</b>
+      <span>Shorter and wider, turned wooden cap with a sticker on top, and a
+            paper sleeve round the middle with a visible crease where it laps
+            over itself.</span>
+      <em>height / width 0.69</em>
+    </button>
+  </div>
+</div></div>
+
+<div id="route" hidden><div class="in">
   <h2>Where does the label come from?</h2>
   <p class="sub">Both end in the same jar. The difference is only what the
      label is drawn from, and one of them is much better input if you happen
@@ -517,6 +543,7 @@ td b{font-weight:500;color:var(--l1)}
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createResinCultureJarModel, createJarLights, LIGHTING } from './src/createJarModel.js';
+import { createSleeveJarModel, SLEEVE_DIM } from './src/createSleeveJarModel.js';
 import { makeTemplatePack, CONFIG } from './src/labelArtTemplate.js';
 import { AROMA, FLAVOUR, TERROIR, EXPERIENCE, ALL_AROMA } from './src/taxonomy.js';
 import { stitchWrap, TURNS } from './src/stitchWrap.js';
@@ -809,6 +836,7 @@ function setProvenance(kind) {
    phase 'build'   : stitch, then generate
    ===================================================================== */
 const CAP = {
+  shape: null,               // 'tall' | 'sleeve', chosen before the route
   route: null,               // 'photo' | 'artwork', chosen before anything else
   phase: 'outside',
   min: 4,                    // fewest arcs that cover the jar
@@ -1292,6 +1320,32 @@ function chooseRoute(r) {
   if (r === 'artwork') { CAP.phase = 'top'; }
   paintPips(); paintSession();
 }
+/**
+ * The two jar shapes, and everything that actually differs because of them.
+ *
+ * `guide` is the aspect of the viewfinder box, WIDTH over HEIGHT of the jar as
+ * you hold it. It is not decoration: guideRectInFrame() hands that rectangle
+ * to the unwrap as the jar's silhouette, and the unwrap reads the radius
+ * straight off its width.
+ */
+const SHAPES = {
+  tall:   { id: 'tall',   guide: 50 / 42,  factory: createResinCultureJarModel,
+            label: 'Tall jar' },
+  sleeve: { id: 'sleeve', guide: 52 / 35.88, factory: createSleeveJarModel,
+            label: 'Squat sleeve jar' },
+};
+
+function chooseShape(k) {
+  CAP.shape = k;
+  $('shape').hidden = true;
+  $('route').hidden = false;
+  // The guide box follows the jar, so a squat jar gets a squat box.
+  document.documentElement.style.setProperty('--guide-aspect', String(SHAPES[k].guide));
+  out.textContent = SHAPES[k].label + ' selected.';
+}
+$('shapeTall').addEventListener('click', () => chooseShape('tall'));
+$('shapeSleeve').addEventListener('click', () => chooseShape('sleeve'));
+
 $('routePhoto').addEventListener('click', () => chooseRoute('photo'));
 $('routeArt').addEventListener('click', () => chooseRoute('artwork'));
 
@@ -1482,6 +1536,8 @@ let jar = null, tPack = null;
 function paintJar(hexColour, art, base, capTop) {
   // With artwork we rebuild the pack every time: the wrap IS the pack, so a
   // cached one would keep painting the previous session's label.
+  // The sleeve jar takes the same pack: one wrap, one top, one base. That is
+  // the whole reason both factories share an options shape.
   const pack = art
     ? makeTemplatePack({ ...CONFIG, name: 'Captured jar',
                          art: { body: art,
@@ -1490,7 +1546,8 @@ function paintJar(hexColour, art, base, capTop) {
     : (tPack ||= makeTemplatePack({ ...CONFIG, card: { ...CONFIG.card, show: false } }));
   const tPackUsed = pack;
   if (jar) { jar.userData.sculptRuntime.dispose(); scene.remove(jar); }
-  jar = createResinCultureJarModel({
+  const build = (SHAPES[CAP.shape] ?? SHAPES.tall).factory;
+  jar = build({
     label: { ...tPackUsed,
              contents: { color: hexColour, attenuation: hexColour, blockout: 0xcccccc },
              lighting: LIGHTING.studio },

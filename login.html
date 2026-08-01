@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in / Meltshelf</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#08090B;--pane:#0F1114;
+  --green:#51EC43;--greenGlow:rgba(81,236,67,.18);
+  --orange:#FF7A18;
+  --silver:#EDF1F5;
+  --l1:var(--silver);--l2:rgba(237,241,245,.62);--l3:rgba(237,241,245,.34);
+  --line:rgba(237,241,245,.12);
+  --ease:cubic-bezier(.66,0,.01,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--l1);font-family:'Archivo',system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;min-height:100vh;display:grid;place-items:center;
+  padding:24px}
+a{color:var(--green);text-decoration:none}
+a:hover{text-decoration:underline}
+.card{width:min(440px,100%)}
+.mark{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.42em;
+  text-transform:uppercase;color:var(--l3)}
+h1{font-size:clamp(26px,5vw,34px);font-weight:800;letter-spacing:-.025em;margin-top:14px;
+  line-height:1.1}
+.sub{margin-top:11px;font-size:14px;color:var(--l2);line-height:1.62}
+form{margin-top:26px}
+label{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--l3);margin-bottom:8px}
+input[type=email]{width:100%;background:transparent;border:1px solid var(--line);
+  color:var(--l1);padding:14px 16px;border-radius:3px;font:inherit;font-size:15px}
+input[type=email]:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px var(--greenGlow)}
+button{font:inherit;cursor:pointer;border-radius:3px;border:1px solid var(--line);
+  background:rgba(237,241,245,.05);color:var(--l1);padding:11px 16px;font-size:14px}
+button:hover:not(:disabled){border-color:var(--green)}
+button:disabled{opacity:.5;cursor:default}
+button.primary{width:100%;margin-top:14px;border:0;font-weight:700;color:#06210A;
+  background:linear-gradient(96deg,var(--green),#8BFF52 55%,var(--orange));padding:14px}
+
+/* the six boxes */
+.code{display:flex;gap:8px;margin-top:4px}
+.code input{flex:1;min-width:0;aspect-ratio:1/1.15;background:#0A0B0D;
+  border:1px solid var(--line);border-radius:4px;color:var(--l1);text-align:center;
+  font-family:'IBM Plex Mono',monospace;font-size:clamp(20px,6vw,26px);font-weight:500}
+.code input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px var(--greenGlow)}
+.code input.filled{border-color:rgba(81,236,67,.5)}
+
+.row{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap}
+.note{margin-top:18px;font-size:12px;color:var(--l3);line-height:1.6}
+.err{margin-top:14px;font-size:13px;line-height:1.55;color:#FF8A8A;
+  border-left:2px solid #FF8A8A;padding-left:11px}
+.ok{margin-top:14px;font-size:13px;line-height:1.55;color:var(--green);
+  border-left:2px solid var(--green);padding-left:11px}
+.setup{margin-top:14px;font-size:13px;line-height:1.6;color:var(--orange);
+  border-left:2px solid var(--orange);padding-left:11px}
+.foot{margin-top:32px;padding-top:18px;border-top:1px solid var(--line);
+  font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--l3);display:flex;justify-content:space-between;gap:12px}
+.foot a{color:var(--l3)}
+.foot a:hover{color:var(--green);text-decoration:none}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <span class="mark">Meltshelf</span>
+
+  <!-- STEP 1 -->
+  <section id="stepEmail">
+    <h1>Sign in.</h1>
+    <p class="sub">No password. We email you a six digit code and you type it
+       into this tab.</p>
+    <form id="emailForm" novalidate>
+      <label for="email">Your email</label>
+      <input type="email" id="email" autocomplete="email" inputmode="email"
+             placeholder="you@wherever" autofocus>
+      <button type="submit" class="primary" id="sendBtn">Email me a code</button>
+    </form>
+    <p class="note">Early access is invite only. Anyone can ask for a code, but
+       a shelf only opens once it has been let in, so you may land on a waiting
+       screen. That is the gate working, not a fault.</p>
+  </section>
+
+  <!-- STEP 2 -->
+  <section id="stepCode" hidden>
+    <h1>Check your email.</h1>
+    <p class="sub">Six digits, sent to <b id="sentTo"></b>. It expires in ten
+       minutes and works once.</p>
+    <form id="codeForm" novalidate>
+      <label for="d0">The code</label>
+      <div class="code" id="code">
+        <input id="d0" inputmode="numeric" autocomplete="one-time-code" maxlength="1" aria-label="digit 1">
+        <input id="d1" inputmode="numeric" maxlength="1" aria-label="digit 2">
+        <input id="d2" inputmode="numeric" maxlength="1" aria-label="digit 3">
+        <input id="d3" inputmode="numeric" maxlength="1" aria-label="digit 4">
+        <input id="d4" inputmode="numeric" maxlength="1" aria-label="digit 5">
+        <input id="d5" inputmode="numeric" maxlength="1" aria-label="digit 6">
+      </div>
+      <button type="submit" class="primary" id="verifyBtn" disabled>Sign in</button>
+    </form>
+    <div class="row">
+      <button id="resendBtn" disabled>Resend</button>
+      <button id="backBtn">Use a different email</button>
+    </div>
+  </section>
+
+  <p id="msg" hidden></p>
+  <p id="setup" class="setup" hidden></p>
+
+  <div class="foot">
+    <a href="./">Meltshelf</a>
+    <a href="./discover.html">Browse without an account</a>
+  </div>
+</div>
+
+<!-- UMD before the module: auth.js reads the global it sets. -->
+<script src="./vendor/supabase/supabase.umd.js"></script>
+<script type="module">
+import { sendCode, verifyCode, profile, routeFor, session,
+         configured, SETUP_HELP } from './src/auth.js';
+
+const $ = (id) => document.getElementById(id);
+const boxes = [...document.querySelectorAll('.code input')];
+let email = '';
+let cooldown = 0;
+
+function say(text, kind = 'err') {
+  const m = $('msg');
+  m.hidden = !text;
+  m.className = kind;
+  m.textContent = text ?? '';
+}
+
+if (!configured()) {
+  $('setup').hidden = false;
+  $('setup').textContent = SETUP_HELP;
+  $('sendBtn').disabled = true;
+}
+
+/* Already signed in? Do not make somebody log in twice. routeFor is the one
+   place that decides where an account belongs, so this cannot drift from the
+   guard on the pages themselves. */
+(async () => {
+  if (!configured()) return;
+  if (await session()) {
+    const p = await profile().catch(() => null);
+    const to = routeFor(p);
+    if (to !== './login.html') location.replace(to);
+  }
+})();
+
+/* ── step 1 ─────────────────────────────────────────────────────────── */
+$('emailForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const v = $('email').value.trim();
+  if (!/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(v)) {
+    say('That does not look like an email address.');
+    return;
+  }
+  $('sendBtn').disabled = true;
+  say('');
+  try {
+    await sendCode(v);
+    email = v;
+    $('sentTo').textContent = v;
+    $('stepEmail').hidden = true;
+    $('stepCode').hidden = false;
+    boxes[0].focus();
+    startCooldown(30);
+  } catch (err) {
+    say(friendly(err));
+  } finally {
+    $('sendBtn').disabled = false;
+  }
+});
+
+/* ── the six boxes ──────────────────────────────────────────────────── */
+const readCode = () => boxes.map((b) => b.value).join('');
+
+function refresh() {
+  boxes.forEach((b) => b.classList.toggle('filled', !!b.value));
+  $('verifyBtn').disabled = readCode().length !== 6;
+}
+
+boxes.forEach((box, i) => {
+  box.addEventListener('input', () => {
+    // Strip anything that is not a digit rather than rejecting the keystroke:
+    // some keyboards send a whole word on autocorrect.
+    box.value = box.value.replace(/\D/g, '').slice(-1);
+    if (box.value && i < boxes.length - 1) boxes[i + 1].focus();
+    refresh();
+    if (readCode().length === 6) $('codeForm').requestSubmit();
+  });
+  box.addEventListener('keydown', (e) => {
+    // Backspace on an empty box steps back, which is what every OTP field
+    // does and what fingers expect.
+    if (e.key === 'Backspace' && !box.value && i > 0) { boxes[i - 1].focus(); e.preventDefault(); }
+    if (e.key === 'ArrowLeft' && i > 0) boxes[i - 1].focus();
+    if (e.key === 'ArrowRight' && i < boxes.length - 1) boxes[i + 1].focus();
+  });
+  // Pasting the whole code into any box fills them all. People paste.
+  box.addEventListener('paste', (e) => {
+    const digits = (e.clipboardData.getData('text') || '').replace(/\D/g, '').slice(0, 6);
+    if (!digits) return;
+    e.preventDefault();
+    digits.split('').forEach((d, k) => { if (boxes[k]) boxes[k].value = d; });
+    boxes[Math.min(digits.length, 5)].focus();
+    refresh();
+    if (digits.length === 6) $('codeForm').requestSubmit();
+  });
+});
+
+/* ── step 2 ─────────────────────────────────────────────────────────── */
+$('codeForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const code = readCode();
+  if (code.length !== 6) return;
+  $('verifyBtn').disabled = true;
+  say('Checking.', 'ok');
+  try {
+    await verifyCode(email, code);
+    const p = await profile().catch(() => null);
+    say('Signed in.', 'ok');
+    location.replace(routeFor(p));
+  } catch (err) {
+    say(friendly(err));
+    boxes.forEach((b) => { b.value = ''; });
+    refresh();
+    boxes[0].focus();
+  }
+});
+
+$('backBtn').addEventListener('click', () => {
+  $('stepCode').hidden = true;
+  $('stepEmail').hidden = false;
+  boxes.forEach((b) => { b.value = ''; });
+  refresh(); say(''); $('email').focus();
+});
+
+function startCooldown(secs) {
+  cooldown = secs;
+  const b = $('resendBtn');
+  const tick = () => {
+    b.disabled = cooldown > 0;
+    b.textContent = cooldown > 0 ? `Resend in ${cooldown}` : 'Resend';
+    if (cooldown > 0) { cooldown--; setTimeout(tick, 1000); }
+  };
+  tick();
+}
+
+$('resendBtn').addEventListener('click', async () => {
+  if (cooldown > 0 || !email) return;
+  try { await sendCode(email); say('Sent again.', 'ok'); startCooldown(30); }
+  catch (err) { say(friendly(err)); }
+});
+
+/** Supabase errors are accurate and unreadable. Translate the ones people hit. */
+function friendly(err) {
+  const m = (err?.message || String(err)).toLowerCase();
+  if (m.includes('token has expired') || m.includes('expired'))
+    return 'That code has expired. Ask for a new one.';
+  if (m.includes('invalid') && m.includes('token'))
+    return 'That code is not right. Check the email and try again.';
+  if (m.includes('rate limit') || m.includes('too many') || m.includes('60 seconds'))
+    return 'Too many requests. Wait a minute and try again.';
+  if (m.includes('failed to fetch') || m.includes('networkerror'))
+    return 'Could not reach the server. Check your connection.';
+  return err?.message || 'Something went wrong.';
+}
+</script>
+</body>
+</html>

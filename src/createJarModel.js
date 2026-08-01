@@ -205,7 +205,7 @@ function capProfile() {
   ];
 }
 
-function lathe(profile, segments = 128) {
+export function lathe(profile, segments = 128) {
   const pts = profile.map(([x, y]) => new THREE.Vector2(Math.max(1e-4, x), y));
   const g = new THREE.LatheGeometry(pts, segments);
   g.computeVertexNormals();
@@ -216,7 +216,7 @@ function lathe(profile, segments = 128) {
  * Thread bead: constant cross-section swept along a helix (fiber-strand topology).
  * The radius ramps to zero over the first and last 40 deg — the lead-in and run-out.
  */
-function threadHelix(radius, yStart, turns, pitch, tubeR, phase = 0, segments = 216) {
+export function threadHelix(radius, yStart, turns, pitch, tubeR, phase = 0, segments = 216) {
   const pts = [];
   for (let i = 0; i <= segments; i++) {
     const t = i / segments;
@@ -249,7 +249,7 @@ function threadHelix(radius, yStart, turns, pitch, tubeR, phase = 0, segments = 
 }
 
 /** Seeded 3-octave value noise for the contents displacement. */
-function valueNoise3(seed) {
+export function valueNoise3(seed) {
   const rnd = mulberry32(seed);
   const p = new Float32Array(512);
   for (let i = 0; i < 512; i++) p[i] = rnd();
@@ -285,7 +285,7 @@ function valueNoise3(seed) {
  * the wax wets the wall. Normals are recomputed after displacement, otherwise the
  * wet speckle highlights sit on flat shading.
  */
-function rosinGeometry(surface = null) {
+export function rosinGeometry(surface = null) {
   const fillY = DIM.FILL_Y;            // world-space top of the product
   const inset = 0.18;                  // clearance from the bore wall
 
@@ -431,7 +431,7 @@ function rosinGeometry(surface = null) {
  * facet throws its own hard highlight — that glint is the point, and a smooth
  * sphere would give a single soft one instead.
  */
-function crystalChunks(surface, geo, materials) {
+export function crystalChunks(surface, geo, materials) {
   const rnd = mulberry32((surface.seed ?? 0x9EA7) ^ 0x5C1);
   const count = surface.crystals ?? 46;
   const rTop = geo.userData.rTop;
@@ -474,7 +474,7 @@ function crystalChunks(surface, geo, materials) {
 }
 
 // ------------------------------------------------------------- textures
-function canvasTexture(canvas, { srgb = false, repeatX = 1, aniso = 8 } = {}) {
+export function canvasTexture(canvas, { srgb = false, repeatX = 1, aniso = 8 } = {}) {
   const t = new THREE.CanvasTexture(canvas);
   t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
   t.wrapS = THREE.RepeatWrapping;

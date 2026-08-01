@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin / Meltshelf</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#08090B;--pane:#0F1114;--green:#51EC43;--greenGlow:rgba(81,236,67,.18);
+  --orange:#FF7A18;--silver:#EDF1F5;
+  --l1:var(--silver);--l2:rgba(237,241,245,.62);--l3:rgba(237,241,245,.34);
+  --line:rgba(237,241,245,.12);--ease:cubic-bezier(.66,0,.01,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--l1);font-family:'Archivo',system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1120px;margin:0 auto;padding:0 clamp(16px,4vw,36px)}
+
+header{border-bottom:1px solid var(--line);padding:16px 0;position:sticky;top:0;
+  background:rgba(8,9,11,.94);backdrop-filter:blur(14px);z-index:20}
+header .wrap{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.brand{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.26em;
+  text-transform:uppercase;color:var(--l3)}
+.brand b{color:var(--green);font-weight:500}
+.brand em{font-style:normal;color:var(--orange)}
+nav{display:flex;gap:14px;margin-left:auto;font-family:'IBM Plex Mono',monospace;
+  font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--l3);align-items:center}
+nav a:hover{color:var(--green)}
+button{font:inherit;cursor:pointer;border-radius:3px;border:1px solid var(--line);
+  background:rgba(237,241,245,.05);color:var(--l1);padding:7px 12px;font-size:12px}
+button:hover:not(:disabled){border-color:var(--green)}
+button:disabled{opacity:.45;cursor:default}
+button.go{background:var(--greenGlow);border-color:var(--green);color:var(--green)}
+button.no{border-color:rgba(255,122,24,.5);color:var(--orange)}
+
+h1{font-size:clamp(22px,3.4vw,30px);font-weight:800;letter-spacing:-.02em;margin-top:30px}
+.lede{margin-top:9px;font-size:13px;color:var(--l2);line-height:1.6;max-width:70ch}
+.warn{margin-top:14px;font-size:12px;line-height:1.6;color:var(--l3);
+  border-left:2px solid var(--orange);padding-left:12px;max-width:70ch}
+.warn b{color:var(--orange)}
+
+section{margin-top:34px}
+h2{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.24em;
+  text-transform:uppercase;color:var(--green);margin-bottom:4px}
+h2 span{color:var(--l3)}
+.hint{font-size:12px;color:var(--l3);margin-bottom:14px;line-height:1.55}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--l3);font-weight:500;padding:0 10px 8px 0;
+  border-bottom:1px solid var(--line)}
+td{padding:11px 10px 11px 0;border-bottom:1px solid rgba(237,241,245,.06);vertical-align:middle}
+td.act{text-align:right;white-space:nowrap}
+tr:hover td{background:rgba(237,241,245,.02)}
+.h{font-weight:700}
+.mono{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--l2)}
+.pill{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:9px;
+  letter-spacing:.16em;text-transform:uppercase;padding:3px 8px;border-radius:99px;
+  border:1px solid var(--line);color:var(--l3)}
+.pill.ok{color:var(--green);border-color:rgba(81,236,67,.45);background:rgba(81,236,67,.07)}
+.pill.no{color:var(--orange);border-color:rgba(255,122,24,.45);background:rgba(255,122,24,.07)}
+.pill.adm{color:var(--silver);border-color:rgba(237,241,245,.4)}
+#msg{margin-top:14px;font-size:12.5px;line-height:1.55;min-height:18px}
+#msg.err{color:#FF8A8A}
+#msg.ok{color:var(--green)}
+.empty{padding:26px 0;color:var(--l3);font-size:13px}
+footer{border-top:1px solid var(--line);margin-top:50px;padding:22px 0 40px;
+  font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--l3)}
+</style>
+</head>
+<body>
+
+<header><div class="wrap">
+  <a class="brand" href="./app.html"><b>Meltshelf</b> &nbsp;/&nbsp; <em>Admin</em></a>
+  <nav>
+    <a href="./app.html">Your shelf</a>
+    <a href="./discover.html">Discover</a>
+    <button id="out">Sign out</button>
+  </nav>
+</div></header>
+
+<div class="wrap">
+  <h1>Who gets in.</h1>
+  <p class="lede">Early access is invite only. An account can exist, hold a
+     confirmed email, and still see nothing at all until it is approved here.</p>
+
+  <!-- Says plainly what this screen is and is not, because a screen that
+       looks like the security boundary is how people stop checking the real
+       one. -->
+  <p class="warn"><b>This page is a view, not the gate.</b> Approval is a
+     Postgres function that re-checks the admin role before it writes, so a
+     button pressed by anyone else fails in the database whatever this page
+     renders. If you are reading this, you already passed that check.</p>
+
+  <section>
+    <h2>Members <span id="mCount"></span></h2>
+    <p class="hint">Approving lets an account in. Premium adds the wish list
+       and prototype bays; it never changes what a jar counts as.</p>
+    <table>
+      <thead><tr>
+        <th>Handle</th><th>State</th><th>Joined</th><th></th>
+      </tr></thead>
+      <tbody id="members"></tbody>
+    </table>
+    <p class="empty" id="mEmpty" hidden>Nobody has signed in yet.</p>
+  </section>
+
+  <section>
+    <h2>Waitlist <span id="wCount"></span></h2>
+    <p class="hint">Addresses from the homepage form. Someone appears in
+       Members only once they ask for a login code, so a waitlist entry with no
+       matching member has not tried to sign in yet.</p>
+    <table>
+      <thead><tr><th>Email</th><th>Joined</th><th></th></tr></thead>
+      <tbody id="waitlist"></tbody>
+    </table>
+    <p class="empty" id="wEmpty" hidden>Nothing yet.</p>
+  </section>
+
+  <p id="msg"></p>
+</div>
+
+<footer><div class="wrap">Admin · Meltshelf</div></footer>
+
+<script src="./vendor/supabase/supabase.umd.js"></script>
+<script type="module">
+import { requireAccount, listMembers, listWaitlist, approveMember, revokeMember,
+         signOut, configured, SETUP_HELP } from './src/auth.js';
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const day = (d) => d ? new Date(d).toLocaleDateString(undefined,
+  { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+
+function say(t, kind = '') { $('msg').className = kind; $('msg').textContent = t ?? ''; }
+
+let me = null;
+
+async function draw() {
+  const [members, wait] = await Promise.all([
+    listMembers().catch((e) => { say(e.message, 'err'); return []; }),
+    listWaitlist().catch(() => []),
+  ]);
+
+  $('mCount').textContent = members.length ? `(${members.length})` : '';
+  $('mEmpty').hidden = members.length > 0;
+  $('members').innerHTML = members.map((m) => {
+    const self = m.id === me.id;
+    // A pending account has no handle: the handle is claimed after approval.
+    // So the email is the identifier at exactly the moment you need one, and
+    // the handle takes over once it exists.
+    return `<tr>
+      <td>
+        <span class="h">${m.display_name
+          ? '@' + esc(m.display_name)
+          : '<span style="color:var(--l3);font-weight:500">no handle yet</span>'}</span>
+        <div class="mono">${esc(m.email)}</div>
+        ${m.entry_count ? `<div class="mono" style="color:var(--l3)">${m.entry_count} jar${m.entry_count === 1 ? '' : 's'}</div>` : ''}
+      </td>
+      <td>
+        ${m.approved ? '<span class="pill ok">approved</span>' : '<span class="pill no">pending</span>'}
+        ${m.premium ? '<span class="pill">premium</span>' : ''}
+        ${m.is_admin ? '<span class="pill adm">admin</span>' : ''}
+      </td>
+      <td class="mono">${day(m.created_at)}</td>
+      <td class="act">
+        ${m.approved
+          ? `<button class="no" data-revoke="${m.id}" ${self ? 'disabled title="You cannot revoke yourself"' : ''}>Revoke</button>`
+          : `<button class="go" data-approve="${m.id}">Approve</button>
+             <button data-approve="${m.id}" data-premium="1">Approve + premium</button>`}
+      </td>
+    </tr>`;
+  }).join('');
+
+  $('wCount').textContent = wait.length ? `(${wait.length})` : '';
+  $('wEmpty').hidden = wait.length > 0;
+  $('waitlist').innerHTML = wait.map((w) => `<tr>
+      <td class="mono">${esc(w.email)}</td>
+      <td class="mono">${day(w.created_at)}</td>
+      <td class="act"><span class="pill">${
+        members.some((m) => m.email === w.email) ? 'signed in' : 'not signed in'}</span></td>
+    </tr>`).join('');
+
+  wire();
+}
+
+function wire() {
+  for (const b of document.querySelectorAll('[data-approve]')) {
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      try {
+        await approveMember(b.dataset.approve, b.dataset.premium === '1');
+        say('Approved.', 'ok');
+        await draw();
+      } catch (e) { say(e.message, 'err'); b.disabled = false; }
+    });
+  }
+  for (const b of document.querySelectorAll('[data-revoke]')) {
+    b.addEventListener('click', async () => {
+      // Revoking takes a shelf away from someone who currently has one, so it
+      // asks. Approving does not: letting somebody in is the reversible one.
+      if (!confirm('Revoke this account? They keep their jars but lose access until approved again.')) return;
+      b.disabled = true;
+      try {
+        await revokeMember(b.dataset.revoke);
+        say('Revoked.', 'ok');
+        await draw();
+      } catch (e) { say(e.message, 'err'); b.disabled = false; }
+    });
+  }
+}
+
+$('out').addEventListener('click', async () => {
+  await signOut();
+  location.replace('./login.html');
+});
+
+(async () => {
+  if (!configured()) { say(SETUP_HELP, 'err'); return; }
+  // Sends a non-admin to their own shelf. Not security: the database refuses
+  // them regardless. This only stops the page rendering a panel of buttons
+  // that would all fail.
+  me = await requireAccount('admin');
+  if (me) await draw();
+})();
+</script>
+</body>
+</html>
