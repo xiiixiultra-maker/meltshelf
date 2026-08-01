@@ -126,6 +126,35 @@ body.free .bay.wish .lock,body.free .bay.proto .lock{display:block}
 #emptyPanel p{margin-top:12px;font-size:14px;color:var(--l2)}
 #emptyPanel .primary{margin-top:22px;font-size:14px;padding:13px 24px}
 
+/* ---------------- listing ---------------- */
+.listRow{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+.listRow .lab{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--l3)}
+.listRow .lab b{display:block;margin-top:4px;font-size:11px;letter-spacing:.06em;
+  text-transform:none;font-weight:500}
+.listRow .lab b.on{color:var(--green)}
+.listRow .lab b.off{color:var(--l2)}
+#listBtn{font:inherit;font-size:11.5px;padding:7px 12px;border-radius:3px;cursor:pointer;
+  background:rgba(237,241,245,.05);border:1px solid var(--line);color:var(--l1);
+  flex:0 0 auto}
+#listBtn:hover{border-color:var(--green);color:var(--green)}
+#listBtn.pub{border-color:rgba(255,122,24,.5);color:var(--orange)}
+#listNever{margin-top:9px;font-size:11px;line-height:1.6;color:var(--l3);
+  border-left:2px solid var(--line);padding-left:10px}
+/* The consequence, before the switch moves. */
+#listWarn{margin-top:11px;border:1px solid rgba(255,122,24,.45);border-radius:4px;
+  background:rgba(255,122,24,.06);padding:12px 13px}
+#listWarn p{font-size:11.5px;line-height:1.62;color:var(--l2)}
+#listWarn p + p{margin-top:8px}
+#listWarn b{color:var(--orange)}
+#listWarn .row{display:flex;gap:8px;margin-top:12px}
+#listWarn button{font:inherit;font-size:11.5px;padding:8px 12px;border-radius:3px;
+  cursor:pointer;border:1px solid var(--line);background:rgba(237,241,245,.05);
+  color:var(--l1);flex:1}
+#listWarn button.go{border:0;font-weight:700;color:#06210A;
+  background:linear-gradient(96deg,var(--green),#8BFF52 55%,var(--orange))}
+
 /* ---------------- open the jar ---------------- */
 /* The card scrolls once the details are out: on a laptop the whole thing
    would otherwise run off the bottom of the screen. */
@@ -310,6 +339,27 @@ body.free #fxLocked{display:block}
   </table>
   <p class="note" id="c-note"></p>
 
+  <div class="listRow">
+    <span class="lab">On Discover<b id="listState">&middot;</b></span>
+    <button id="listBtn" hidden>&middot;</button>
+  </div>
+  <p id="listNever" hidden></p>
+  <div id="listWarn" hidden>
+    <p><b>This puts the jar on a public page.</b> Anyone with the link sees it
+       next to your handle, with its name, brand, colour and the
+       captured-in-session badge. No account needed to look.</p>
+    <p>Your notes, your prices, when you captured it and anything in the other
+       bays are never included. Only rotation jars you list can appear at all.</p>
+    <p>Discover is not search-indexed, so it will not turn up in Google. It is
+       still public to anyone who opens it, and a copy someone takes while it
+       is up stays taken. <b>Unlisting removes it from the page, not from
+       somebody's screenshot.</b></p>
+    <div class="row">
+      <button id="listNo">Keep it private</button>
+      <button id="listYes" class="go">List it on Discover</button>
+    </div>
+  </div>
+
   <button id="c-open">Open jar</button>
   <div id="c-more"><div class="inner">
     <p class="sec g">What it is</p>
@@ -394,6 +444,7 @@ function rowToItem(e) {
     captured: e.color_captured,
     display: e.color_display ?? e.color_captured ?? '#E4D3A4',
     notes: e.notes,
+    listed: !!e.listed,
     spec: e.spec ?? {},
   };
 }
@@ -730,6 +781,8 @@ function show(it) {
     + 'what the room smelled like: yours to write, and none of it leaves your '
     + 'account unless you publish the shelf.';
 
+  paintListing(it);
+
   card.classList.remove('off');
   // Re-synced to the jar just picked, and measured after the card is visible:
   // a display:none subtree measures as zero.
@@ -753,6 +806,64 @@ const fxClock = new THREE.Clock();
   placeCaptions();
   renderer.render(scene, camera);
 })();
+
+/* =====================================================================
+   LISTING
+
+   The projection only ever emits rotation jars, so a wish list or prototype
+   jar cannot be listed no matter what this flag says. Rather than offer a
+   switch that does nothing, those bays get a sentence explaining why.
+
+   Publishing asks. Unpublishing does not. Going public is the direction that
+   cannot be fully undone, so it is the one that costs a sentence and a second
+   click; taking something down should never be made tedious.
+   ===================================================================== */
+function paintListing(it) {
+  const listable = it && it.bay === 'rotation';
+  q('listWarn').hidden = true;
+  q('listNever').hidden = listable || !it;
+  q('listBtn').hidden = !listable;
+  q('listState').textContent = !it ? '·'
+    : !listable ? 'never'
+    : it.listed ? 'listed' : 'not listed';
+  q('listState').className = it && listable && it.listed ? 'on' : 'off';
+
+  if (it && !listable) {
+    q('listNever').textContent = it.bay === 'wishlist'
+      ? 'A wish list is a shopping list and says a lot about you, so it is '
+        + 'never listed. The projection that feeds Discover excludes it, which '
+        + 'means there is no setting here to get wrong.'
+      : 'A prototype never existed, so it is quarantined from every public '
+        + 'count and page. Excluded by the projection, not by this screen.';
+  }
+  if (listable) {
+    q('listBtn').textContent = it.listed ? 'Unlist' : 'List it';
+    q('listBtn').classList.toggle('pub', !it.listed);
+  }
+}
+
+async function setListed(it, next) {
+  const { error } = await db().from('entries')
+    .update({ listed: next }).eq('id', it.id);
+  if (error) { q('status').textContent = 'Could not change listing: ' + error.message; return; }
+  it.listed = next;
+  paintListing(it);
+  q('status').textContent = next
+    ? 'Listed. It appears on Discover next to @' + ME.display_name + '.'
+    : 'Unlisted. It is off Discover now.';
+}
+
+q('listBtn').addEventListener('click', () => {
+  if (!picked) return;
+  // Unlisting is immediate; listing has to be agreed to first.
+  if (picked.listed) setListed(picked, false);
+  else q('listWarn').hidden = false;
+});
+q('listNo').addEventListener('click', () => { q('listWarn').hidden = true; });
+q('listYes').addEventListener('click', () => {
+  q('listWarn').hidden = true;
+  if (picked) setListed(picked, true);
+});
 
 /* =====================================================================
    OPENING A JAR
@@ -899,7 +1010,7 @@ async function boot() {
 
   const { data, error } = await db()
     .from('entries')
-    .select('id, name, strain, brand, bay, provenance, color_captured, color_display, notes, spec')
+    .select('id, name, strain, brand, bay, provenance, color_captured, color_display, notes, spec, listed')
     .order('created_at', { ascending: true });
 
   if (error) {

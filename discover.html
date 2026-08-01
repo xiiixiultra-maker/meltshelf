@@ -5,8 +5,28 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Discover / Meltshelf</title>
 <meta name="description" content="Browse shelves people chose to list. No account needed.">
-<!-- Indexable on purpose. This is the one page a stranger can use in full
-     without an account, so it is the page that should be findable. -->
+<meta name="robots" content="noindex">
+<!--
+  NOINDEX, and this reverses an earlier decision.
+
+  The reasoning for indexing was sound as far as it went: this is the one page
+  a stranger can use in full without an account, so it is the page that should
+  be findable. What it missed is what gets found.
+
+  A handle is not a pseudonym. People reuse the handle they already have, so
+  it is usually a name their friends, employer and local police can resolve.
+  This page connects that name to a statement that somebody possesses hash,
+  with a count, a process, and a "captured in session" badge whose entire
+  design purpose is to be credible evidence the jar was really in their hands.
+  A vague claim is deniable. A system built to prove it is not.
+
+  Search indexing is also close to unreversible: caches and archives keep
+  their copy long after the page changes. Default to the recoverable side.
+
+  This comes off when there is a considered position on it, not before, and
+  the decision belongs to the people whose shelves are listed rather than to
+  whoever is editing this file.
+-->
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
