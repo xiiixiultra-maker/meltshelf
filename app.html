@@ -199,7 +199,7 @@ body.free #fxLocked{display:block}
 </head>
 <body>
 
-<div id="load"><span>Building your shelf</span></div>
+<div id="load"><span id="loadMsg">Building your shelf</span></div>
 <div id="app"></div>
 
 <div id="chrome">
@@ -469,10 +469,31 @@ function markPrototype(root) {
   root.add(base);
 }
 
+/**
+ * Decode an image to something three can upload, on any phone.
+ *
+ * createImageBitmap(Blob) is the fast path and is not universal: Safari only
+ * gained it in iOS 15, and some builds accept the call then reject. This page
+ * awaits it before a single jar is built, so where it is missing the entire
+ * shelf fails at its first line while the desktop it was written on is fine.
+ */
+async function decodeImage(url) {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      return await createImageBitmap(await fetch(url).then((r) => r.blob()));
+    } catch { /* fall through to the element path */ }
+  }
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.src = url;
+  if (img.decode) { await img.decode(); }
+  else { await new Promise((res, rej) => { img.onload = res; img.onerror = rej; }); }
+  return img;
+}
+
 async function build() {
   // Charras needs its logo decoded before the label can bake
-  const logo = await createImageBitmap(
-    await fetch('./assets/charras-logo.png').then((r) => r.blob()));
+  const logo = await decodeImage('./assets/charras-logo.png');
   await document.fonts.ready;
 
   for (const item of ROSTER) {
@@ -797,7 +818,32 @@ q('out').addEventListener('click', async () => {
   location.replace('./login.html');
 });
 
-await boot();
+/* A failure has to reach the screen. Before this, anything thrown left
+   "Building your shelf" up forever with nothing to act on, which is worse
+   than an error: it looks like it is still working. */
+function bootFailed(err) {
+  const msg = (err && (err.message || err.reason?.message || String(err))) || 'unknown error';
+  const el = document.getElementById('loadMsg');
+  if (el) {
+    el.innerHTML = 'Could not build your shelf.<br>'
+      + '<span style="color:var(--orange)">' + msg.replace(/[<>&]/g, '') + '</span><br>'
+      + '<a href="./discover.html" style="color:var(--green)">Browse shelves</a>'
+      + ' &nbsp;·&nbsp; '
+      + '<a href="./login.html" style="color:var(--green)">Sign in again</a>';
+  }
+  console.error('[meltshelf] boot failed', err);
+}
+
+// Catches what a try/catch around boot cannot: a module that fails to load,
+// and a rejection from something boot started but did not await.
+addEventListener('error', (e) => { if (!document.getElementById('load').classList.contains('gone')) bootFailed(e.error || e); });
+addEventListener('unhandledrejection', (e) => { if (!document.getElementById('load').classList.contains('gone')) bootFailed(e.reason || e); });
+
+try {
+  await boot();
+} catch (err) {
+  bootFailed(err);
+}
 
 window.__app = { scene, camera, jars, renderer, show, get ROSTER() { return ROSTER; },
                  state, applyTier, get EMPTY() { return EMPTY; }, get ME() { return ME; } };
