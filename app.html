@@ -443,7 +443,7 @@ scene.add(fill);
 
 // the plank stays in every state, including empty
 const plank = new THREE.Mesh(
-  new THREE.BoxGeometry(560, 8, 96),
+  new THREE.BoxGeometry(560, 8, 130),
   new THREE.MeshStandardMaterial({ color: new THREE.Color('#15181D'), roughness: .74, metalness: .12 }),
 );
 plank.position.set(-34, -4, 0);
@@ -459,7 +459,7 @@ const OPENER = createOpener();
 // bay dividers
 for (const dx of [-52, 52]) {
   const d = new THREE.Mesh(
-    new THREE.BoxGeometry(1.5, 46, 92),
+    new THREE.BoxGeometry(1.5, 46, 46),
     new THREE.MeshStandardMaterial({ color: new THREE.Color('#1B1F25'), roughness: .8 }),
   );
   d.position.set(dx, 23, 0);
@@ -783,8 +783,11 @@ function syncOpenUI(jar) {
 q('c-open').addEventListener('click', () => {
   const jar = jarFor(picked);
   if (!jar) return;
-  OPENER.toggle(jar);
+  const nowOpen = OPENER.toggle(jar);
   syncOpenUI(jar);
+  // Out of the way while the lid comes off. Click the jar to bring the card
+  // back; it returns saying Close jar, so the jar is the way back out.
+  if (nowOpen) card.classList.add('off');
 });
 
 /* =====================================================================

@@ -24,7 +24,33 @@
  * redirects the last part of the travel, after the thread has released.
  */
 
-export const CAP_REST = { reach: 58, forward: 38 };
+/**
+ * WHERE THE CAP ENDS UP, AND WHY IT IS STANDING
+ *
+ * A lid lying flat on the plank shows you its edge. The printed top, which on
+ * these jars is the part worth looking at, faces the ceiling. So it does not
+ * lie down: it goes BEHIND the jar and is propped up to face the camera, the
+ * way you would lean a lid against something to read it.
+ *
+ *   back 46   clear behind the jar. The jar's back edge is at z -25 and the
+ *             propped cap is 31 deep, so 46 leaves it standing in open plank
+ *             rather than leaning through the glass.
+ *   side 26   without it the cap hides behind its own jar. 26 is as far as it
+ *             can slide before it starts crowding a neighbour 68 away.
+ *   lift 27   R sin(tip) + (H/2) cos(tip). The height at which the bottom rim
+ *             touches the plank and the cap looks stood up rather than buried.
+ *   tip  +75  degrees. At 0 the cap is flat and you see its edge; at 90 it is
+ *             vertical. 75 leans it back 15 degrees so the top faces a camera
+ *             that is above the shelf looking down, not straight out at a
+ *             viewer who is not there.
+ *
+ * The sign of the tip matters and is easy to get backwards. Rotating about X
+ * by t maps the cap's top normal (0,1,0) to (0, cos t, sin t). Positive t
+ * sends it toward +Z, which is where the camera is. Negative t faces it into
+ * the back of the shelf, which looks identical in a wireframe and shows you
+ * a blank disc in a render.
+ */
+export const CAP_REST = { back: 46, side: 26, lift: 27, tip: 75 * Math.PI / 180 };
 export const OPEN_T = 2.0;      // the runtime's "cap set aside" position
 export const OPEN_MS = 900;
 
@@ -36,7 +62,8 @@ export function capRestFor(x, yaw, otherXs) {
   // No neighbour on a side means unlimited room on that side.
   const gapL = Math.min(...others.filter((v) => v < x).map((v) => x - v), Infinity);
   const gapR = Math.min(...others.filter((v) => v > x).map((v) => v - x), Infinity);
-  const wx = (gapR >= gapL ? 1 : -1) * CAP_REST.reach, wz = CAP_REST.forward;
+  const wx = (gapR >= gapL ? 1 : -1) * CAP_REST.side;
+  const wz = -CAP_REST.back;                       // behind, away from the camera
   const c = Math.cos(yaw), s = Math.sin(yaw);
   return { x: c * wx - s * wz, z: s * wx + c * wz };   // world -> local, about Y
 }
@@ -51,15 +78,34 @@ export function prepareJar(jar, otherXs) {
   jar.userData.rest = capRestFor(jar.position.x, jar.rotation.y, otherXs);
 }
 
-/** Redirect the set-aside leg. setOpen writes x and z itself, so this
- *  overwrites rather than offsets, on the model's own easing curve. */
+/**
+ * Take over the set-aside leg: carry the cap behind the jar and stand it up.
+ *
+ * setOpen owns the screw. It has already written position and rotation by the
+ * time this runs, so this OVERWRITES rather than offsets, on the model's own
+ * easing curve, so nothing changes speed halfway across.
+ *
+ * The one exception is height: setOpen lands the cap at 0.6, and adding the
+ * remaining lift preserves the little arc it travels on the way rather than
+ * replacing it with a straight line.
+ */
 function placeCap(jar, v) {
-  const lid = jar.userData.lid;
-  if (!lid || !jar.userData.capHome) return;
+  const lid = jar.userData.lid, home = jar.userData.capHome;
+  if (!lid || !home) return;
   const free = Math.max(0, Math.min(1, v - 1));
   const e = ease(free);
-  lid.position.x = jar.userData.capHome.x + e * jar.userData.rest.x;
-  lid.position.z = jar.userData.capHome.z + e * jar.userData.rest.z;
+
+  lid.position.x = home.x + e * jar.userData.rest.x;
+  lid.position.z = home.z + e * jar.userData.rest.z;
+  lid.position.y += e * (CAP_REST.lift - 0.6);      // 0.6 is where setOpen leaves it
+
+  // Stand it up to face the camera, and unwind the screw turn so the printing
+  // on the lid ends level instead of stopped at whatever angle it unthreaded
+  // at. rotation.y is rewritten by setOpen every call, so scaling it here is
+  // a fresh value each frame, not a compounding one.
+  lid.rotation.x = e * CAP_REST.tip;
+  lid.rotation.y *= (1 - e);
+  lid.rotation.z = 0;
 }
 
 /**

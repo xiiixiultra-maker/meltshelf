@@ -415,10 +415,10 @@ for (const dx of (Object.keys(SHOWN_BAYS).length > 1 ? [-52, 52] : [])) {
   // which is also how a real shelf divider is built: it separates the bays,
   // it does not fence off the front edge.
   const d = new THREE.Mesh(
-    new THREE.BoxGeometry(1.5, 46, 76),
+    new THREE.BoxGeometry(1.5, 46, 46),
     new THREE.MeshStandardMaterial({ color: new THREE.Color('#1B1F25'), roughness: .8 }),
   );
-  d.position.set(dx, 23, -27);
+  d.position.set(dx, 23, 0);
   d.receiveShadow = true; d.castShadow = true;
   scene.add(d);
 }
@@ -706,8 +706,11 @@ function syncOpenUI(jar) {
 $('c-open').addEventListener('click', () => {
   const jar = jarFor(picked);
   if (!jar) return;
-  OPENER.toggle(jar);      // one open jar at a time is the module's rule
+  const nowOpen = OPENER.toggle(jar);   // one open jar at a time is the module's rule
   syncOpenUI(jar);
+  // Out of the way while the lid comes off. Click the jar to bring the card
+  // back; it returns saying Close jar, so the jar is the way back out.
+  if (nowOpen) card.classList.add('off');
 });
 
 /* ---------------------------------------------------------------- loop */
