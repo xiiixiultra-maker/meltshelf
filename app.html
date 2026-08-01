@@ -126,6 +126,32 @@ body.free .bay.wish .lock,body.free .bay.proto .lock{display:block}
 #emptyPanel p{margin-top:12px;font-size:14px;color:var(--l2)}
 #emptyPanel .primary{margin-top:22px;font-size:14px;padding:13px 24px}
 
+/* ---------------- open the jar ---------------- */
+/* The card scrolls once the details are out: on a laptop the whole thing
+   would otherwise run off the bottom of the screen. */
+#card{max-height:calc(100vh - 44px);overflow-y:auto;scrollbar-width:thin}
+#c-open{width:100%;margin-top:14px;padding:11px;font-weight:700;font-size:12px;
+  background:linear-gradient(96deg,var(--green),#8BFF52 55%,var(--orange));
+  color:#06210A;border:0;border-radius:3px;cursor:pointer;font-family:inherit}
+#c-open:disabled{opacity:.5;cursor:default}
+#c-open.shut{background:transparent;color:var(--l2);border:1px solid var(--line)}
+#c-open.shut:hover{border-color:var(--green);color:var(--green)}
+/* Height animates to a MEASURED scrollHeight. offsetHeight of the inner block
+   excludes its own top margin, which opened the panel 15px short and clipped
+   the last line of every note. */
+#c-more{overflow:hidden;height:0;opacity:0;
+  transition:height .42s var(--ease),opacity .3s var(--ease)}
+#c-more.on{opacity:1}
+#c-more .inner{padding-top:15px;margin-top:15px;border-top:1px solid var(--line)}
+.sec{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--orange);margin-bottom:9px}
+.sec.g{color:var(--green)}
+#c-more table{margin-top:0}
+#c-more .body{margin-top:9px;font-size:12px;line-height:1.66;color:var(--l2);
+  white-space:pre-wrap}
+#c-more .none{margin-top:9px;font-size:11.5px;line-height:1.6;color:var(--l3);
+  border-left:2px solid var(--line);padding-left:10px}
+
 /* ---------------- shelf lighting ---------------- */
 #fx{position:fixed;left:24px;bottom:24px;z-index:7;width:296px;background:var(--pane);
   border:1px solid var(--line);border-radius:5px;padding:13px 14px}
@@ -283,6 +309,15 @@ body.free #fxLocked{display:block}
     <tr><td>edit</td><td id="c-edit">&middot;</td></tr>
   </table>
   <p class="note" id="c-note"></p>
+
+  <button id="c-open">Open jar</button>
+  <div id="c-more"><div class="inner">
+    <p class="sec g">What it is</p>
+    <table id="c-spec"></table>
+    <p class="sec" style="margin-top:16px">Notes</p>
+    <p class="body" id="c-body"></p>
+    <p class="none" id="c-none" hidden></p>
+  </div></div>
 </div>
 
 <script type="importmap">
@@ -298,6 +333,7 @@ body.free #fxLocked{display:block}
 import { requireAccount, db, signOut, saveShelfFx, configured, SETUP_HELP }
   from './src/auth.js';
 import { createShelfFx } from './src/shelfFx.js';
+import { createOpener, prepareJar } from './src/jarOpen.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -418,6 +454,7 @@ scene.add(plank);
    Built here, before any jar exists, because the shelf is lit whether or not
    anything is standing on it. */
 const FX = createShelfFx({ THREE, scene });
+const OPENER = createOpener();
 
 // bay dividers
 for (const dx of [-52, 52]) {
@@ -532,6 +569,13 @@ async function build() {
     scene.add(jar);
     jars.push(jar);
   }
+
+  /* Where each cap goes is decided AFTER the row exists, because the answer
+     depends on the neighbours: the lid goes toward whichever side has more
+     room. Done inside the loop, every jar would be deciding against a shelf
+     that was still half empty. */
+  const xs = jars.map((j) => j.position.x);
+  for (const j of jars) prepareJar(j, xs);
 }
 
 /* ------------------------------------------------------- bay captions */
@@ -586,6 +630,10 @@ function applyTier() {
   const shown = jars.filter((j) => j.visible).length;
   const held = ROSTER.length;
   const hidden = held - shown;
+  // A jar that leaves the shelf on a tier change must not leave its lid
+  // behind, sitting on a plank with nothing under it.
+  if (!p) OPENER.closeAll(jars);
+
   q('status').textContent = held === 0
     ? 'No jars yet · rotation open'
     : `${shown} jar${shown === 1 ? '' : 's'} on the shelf`
@@ -664,7 +712,28 @@ function show(it) {
       ? 'A wish list jar. You do not own it, so there is no provenance to state and the badge names the bay instead. It glows so the shelf reads without labels.'
       : 'A prototype. Nobody ever owned this jar, so a provenance badge would be a lie and the badge names the bay instead. Excluded from public browse and from every count.';
   }
+  // ---- what is in it ----
+  const spec = it.spec && typeof it.spec === 'object' ? it.spec : {};
+  // `pack` is plumbing, not a fact about the hash: it names which artwork to
+  // draw. Showing it in a spec table would be showing somebody a database
+  // column and calling it provenance.
+  const rows = Object.entries(spec).filter(([k]) => k !== 'pack');
+  $('c-spec').innerHTML = rows.length
+    ? rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')
+    : '<tr><td>not recorded</td><td>&middot;</td></tr>';
+
+  const body = $('c-body'), none = $('c-none');
+  body.textContent = it.notes || '';
+  body.hidden = !it.notes;
+  none.hidden = !!it.notes;
+  none.textContent = 'No notes on this jar yet. Aroma, texture, how it pressed, '
+    + 'what the room smelled like: yours to write, and none of it leaves your '
+    + 'account unless you publish the shelf.';
+
   card.classList.remove('off');
+  // Re-synced to the jar just picked, and measured after the card is visible:
+  // a display:none subtree measures as zero.
+  syncOpenUI(jarFor(it));
 }
 
 /* ---------------------------------------------------------------- loop */
@@ -684,6 +753,39 @@ const fxClock = new THREE.Clock();
   placeCaptions();
   renderer.render(scene, camera);
 })();
+
+/* =====================================================================
+   OPENING A JAR
+
+   The cap is on a real thread: setOpen drives rise and rotation off one
+   shared pitch, so it cannot lift without turning. 0 closed, 1 thread
+   released, 2 set aside. The tween runs the whole way so the turn is legible
+   rather than a jump cut.
+   ===================================================================== */
+const jarFor = (it) => jars.find((j) => j.userData.item === it);
+
+/* spec keys and values come out of a jsonb column the account itself can
+   write, so they are escaped on the way into the card rather than trusted. */
+const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function syncOpenUI(jar) {
+  const isOpen = OPENER.isOpen(jar);
+  const btn = q('c-open');
+  btn.disabled = !jar;
+  btn.textContent = isOpen ? 'Close jar' : 'Open jar';
+  btn.classList.toggle('shut', isOpen);
+  const more = q('c-more');
+  more.classList.toggle('on', isOpen);
+  more.style.height = isOpen ? more.scrollHeight + 'px' : '0px';
+}
+
+q('c-open').addEventListener('click', () => {
+  const jar = jarFor(picked);
+  if (!jar) return;
+  OPENER.toggle(jar);
+  syncOpenUI(jar);
+});
 
 /* =====================================================================
    THE LIGHTING PANEL
