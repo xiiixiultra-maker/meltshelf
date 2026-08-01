@@ -126,11 +126,29 @@ export async function profile() {
   if (!user) return null;
   const { data, error } = await c
     .from('profiles')
-    .select('id, handle, display_name, approved, is_admin, premium, created_at')
+    .select('id, handle, display_name, approved, is_admin, premium, created_at, shelf_fx')
     .eq('id', user.id)
     .maybeSingle();
   if (error) throw error;
   return data ? { ...data, email: user.email } : null;
+}
+
+/**
+ * Save how the shelf is lit.
+ *
+ * shelf_fx is one of only three columns `authenticated` may write; approved,
+ * is_admin and premium are not grantable to a session at all, so this cannot
+ * be leaned on to change what an account is entitled to. The database also
+ * caps the column's size, because a client-writable jsonb with no bound is
+ * somewhere to park megabytes on someone else's disk.
+ */
+export async function saveShelfFx(fx) {
+  const c = db();
+  if (!c) return;
+  const { data: { user } } = await c.auth.getUser();
+  if (!user) return;
+  const { error } = await c.from('profiles').update({ shelf_fx: fx }).eq('id', user.id);
+  if (error) throw error;
 }
 
 /** Where a signed-in account belongs right now. One place decides. */

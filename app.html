@@ -126,6 +126,36 @@ body.free .bay.wish .lock,body.free .bay.proto .lock{display:block}
 #emptyPanel p{margin-top:12px;font-size:14px;color:var(--l2)}
 #emptyPanel .primary{margin-top:22px;font-size:14px;padding:13px 24px}
 
+/* ---------------- shelf lighting ---------------- */
+#fx{position:fixed;left:24px;bottom:24px;z-index:7;width:296px;background:var(--pane);
+  border:1px solid var(--line);border-radius:5px;padding:13px 14px}
+.fx-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:11px}
+.fx-head b{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--green);font-weight:500}
+.fx-head em{font-style:normal;font-family:'IBM Plex Mono',monospace;font-size:9px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--l3)}
+.fx-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.fx-row label{flex:0 0 50px;font-size:11px;color:var(--l2)}
+.fx-row input[type=range]{flex:1;accent-color:var(--green);min-width:0}
+.fx-row input[type=color]{width:30px;height:23px;padding:0;border:1px solid var(--line);
+  border-radius:3px;background:none;cursor:pointer}
+.seg{display:flex;flex:1;gap:3px;min-width:0}
+.seg button{flex:1;background:rgba(237,241,245,.05);border:1px solid var(--line);
+  color:var(--l3);border-radius:3px;padding:5px 2px;font:inherit;font-size:10px;cursor:pointer}
+.seg button.on{background:var(--greenGlow);border-color:var(--green);color:var(--green)}
+.tog{background:rgba(237,241,245,.05);border:1px solid var(--line);color:var(--l2);
+  border-radius:3px;padding:5px 11px;font:inherit;font-size:11px;cursor:pointer}
+.tog.on{background:var(--greenGlow);border-color:var(--green);color:var(--green)}
+#fxSaved{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--l3);min-height:12px;margin-top:2px}
+#fxSaved.ok{color:var(--green)}
+/* Free accounts get the panel as a closed door, not a hidden one: you can see
+   what it does, you just cannot work it. */
+body.free #fxBody{opacity:.34;pointer-events:none}
+#fxLocked{display:none;font-size:11px;line-height:1.55;color:var(--orange);margin-top:8px}
+body.free #fxLocked{display:block}
+@media (max-width:820px){#fx{display:none}}
+
 /* ------------------------------------------------------------ the card */
 #card{position:fixed;right:16px;top:106px;width:310px;z-index:12;background:var(--pane);
   border:1px solid var(--line);border-radius:5px;padding:17px;
@@ -198,6 +228,43 @@ body.free .bay.wish .lock,body.free .bay.proto .lock{display:block}
   <a class="primary" href="./">See what premium adds</a>
 </div>
 
+<div id="fx">
+  <div class="fx-head"><b>Shelf lighting</b><em id="fxTier"></em></div>
+  <div id="fxBody">
+    <div class="fx-row">
+      <label>Trim</label>
+      <div class="seg" id="trimSeg">
+        <button data-mode="off" class="on">Off</button>
+        <button data-mode="solid">Solid</button>
+        <button data-mode="gradient">Grad</button>
+        <button data-mode="rainbow">Rainbow</button>
+      </div>
+    </div>
+    <div class="fx-row" id="rowSolid" hidden>
+      <label>Colour</label><input type="color" id="cSolid" value="#51EC43">
+    </div>
+    <div class="fx-row" id="rowGrad" hidden>
+      <label>From/to</label>
+      <input type="color" id="cA" value="#51EC43">
+      <input type="color" id="cB" value="#FF7A18">
+    </div>
+    <div class="fx-row" id="rowSpeed" hidden>
+      <label>Speed</label><input type="range" id="tSpeed" min="0" max="1" step="0.02" value="0.3">
+    </div>
+    <div class="fx-row">
+      <label>Glow</label><input type="range" id="tGlow" min="0" max="1" step="0.02" value="0.7">
+    </div>
+    <div class="fx-row">
+      <label>Smoke</label>
+      <button id="smokeBtn" class="tog">Off</button>
+      <input type="range" id="smokeAmt" min="0" max="1" step="0.02" value="0.55" disabled>
+    </div>
+    <p id="fxSaved"></p>
+  </div>
+  <p id="fxLocked">Shelf lighting is premium. The shelf itself, and every jar
+     on it, is not.</p>
+</div>
+
 <div id="emptyPanel" hidden>
   <h2>Your shelf is empty.</h2>
   <p>Photograph a jar and it takes its place here.</p>
@@ -228,7 +295,9 @@ body.free .bay.wish .lock,body.free .bay.proto .lock{display:block}
 
 <script src="./vendor/supabase/supabase.umd.js"></script>
 <script type="module">
-import { requireAccount, db, signOut, configured, SETUP_HELP } from './src/auth.js';
+import { requireAccount, db, signOut, saveShelfFx, configured, SETUP_HELP }
+  from './src/auth.js';
+import { createShelfFx } from './src/shelfFx.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -344,6 +413,11 @@ const plank = new THREE.Mesh(
 plank.position.set(-34, -4, 0);
 plank.receiveShadow = true;
 scene.add(plank);
+
+/* The lights and the smoke, shared with shelf.html so the two cannot drift.
+   Built here, before any jar exists, because the shelf is lit whether or not
+   anything is standing on it. */
+const FX = createShelfFx({ THREE, scene });
 
 // bay dividers
 for (const dx of [-52, 52]) {
@@ -579,12 +653,91 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
+const fxClock = new THREE.Clock();
 (function loop() {
   requestAnimationFrame(loop);
+  // Clamped: a backgrounded tab returns one enormous delta on the frame it
+  // wakes, which would teleport every puff to the ceiling at once.
+  FX.step(Math.min(0.05, fxClock.getDelta()));
   controls.update();
   placeCaptions();
   renderer.render(scene, camera);
 })();
+
+/* =====================================================================
+   THE LIGHTING PANEL
+
+   Every control writes to FX and then saves. Saving is debounced because a
+   colour input fires continuously while a finger is on it, and a hundred
+   writes per drag is a hundred round trips to say one thing.
+   ===================================================================== */
+let fxSaveTimer = null;
+function fxSaved(text, ok) {
+  const el = q('fxSaved');
+  el.textContent = text;
+  el.classList.toggle('ok', !!ok);
+}
+function fxTouched() {
+  if (!state.premium) return;          // the server would refuse anyway
+  clearTimeout(fxSaveTimer);
+  fxSaved('saving');
+  fxSaveTimer = setTimeout(async () => {
+    try {
+      await saveShelfFx(FX.toJSON());
+      fxSaved('saved to your shelf', true);
+      setTimeout(() => fxSaved(''), 2200);
+    } catch (e) {
+      fxSaved('not saved: ' + e.message);
+    }
+  }, 600);
+}
+
+function setTrimMode(mode) {
+  // pointer-events:none stops a real click but not a scripted one, so the
+  // tier is re-checked here as well. It is still not security: the column
+  // grant and the row policy are what actually decide.
+  if (!state.premium && mode !== 'off') return;
+  FX.TRIM.mode = mode;
+  for (const b of q('trimSeg').children) b.classList.toggle('on', b.dataset.mode === mode);
+  q('rowSolid').hidden = mode !== 'solid';
+  q('rowGrad').hidden = mode !== 'gradient';
+  q('rowSpeed').hidden = mode !== 'rainbow';
+  FX.paintTrim();
+  fxTouched();
+}
+for (const b of q('trimSeg').children) {
+  b.addEventListener('click', () => setTrimMode(b.dataset.mode));
+}
+q('cSolid').addEventListener('input', (e) => { FX.TRIM.solid = e.target.value; FX.paintTrim(); fxTouched(); });
+q('cA').addEventListener('input', (e) => { FX.TRIM.a = e.target.value; FX.paintTrim(); fxTouched(); });
+q('cB').addEventListener('input', (e) => { FX.TRIM.b = e.target.value; FX.paintTrim(); fxTouched(); });
+q('tSpeed').addEventListener('input', (e) => { FX.TRIM.speed = +e.target.value; fxTouched(); });
+q('tGlow').addEventListener('input', (e) => { FX.TRIM.glow = +e.target.value; FX.paintTrim(); fxTouched(); });
+q('smokeBtn').addEventListener('click', () => {
+  if (!state.premium) return;
+  FX.SMOKE.on = !FX.SMOKE.on;
+  q('smokeBtn').classList.toggle('on', FX.SMOKE.on);
+  q('smokeBtn').textContent = FX.SMOKE.on ? 'On' : 'Off';
+  q('smokeAmt').disabled = !FX.SMOKE.on;
+  fxTouched();
+});
+q('smokeAmt').addEventListener('input', (e) => { FX.SMOKE.amount = +e.target.value; fxTouched(); });
+
+/** Push saved state into the controls, so the panel and the shelf agree. */
+function paintFxPanel() {
+  const t = FX.TRIM;
+  for (const b of q('trimSeg').children) b.classList.toggle('on', b.dataset.mode === t.mode);
+  q('rowSolid').hidden = t.mode !== 'solid';
+  q('rowGrad').hidden = t.mode !== 'gradient';
+  q('rowSpeed').hidden = t.mode !== 'rainbow';
+  q('cSolid').value = t.solid; q('cA').value = t.a; q('cB').value = t.b;
+  q('tSpeed').value = t.speed; q('tGlow').value = t.glow;
+  q('smokeBtn').classList.toggle('on', FX.SMOKE.on);
+  q('smokeBtn').textContent = FX.SMOKE.on ? 'On' : 'Off';
+  q('smokeAmt').value = FX.SMOKE.amount;
+  q('smokeAmt').disabled = !FX.SMOKE.on;
+  q('fxTier').textContent = state.premium ? '' : 'premium';
+}
 
 /* =====================================================================
    BOOT
@@ -611,6 +764,12 @@ async function boot() {
   q('who').innerHTML = '@' + ME.display_name + ' <em id="tierTag"></em>';
   q('adminLink').hidden = !ME.is_admin;
   state.premium = !!ME.premium;
+
+  /* Restore the saved look before anything renders, so the shelf never
+     flashes unlit and then jumps. fromJSON validates every field: this row
+     is one the account is allowed to write, so it is treated as input. */
+  if (state.premium) FX.fromJSON(ME.shelf_fx);
+  paintFxPanel();
 
   const { data, error } = await db()
     .from('entries')
