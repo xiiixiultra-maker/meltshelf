@@ -397,11 +397,24 @@ function bodyArt(ctx, W, H, cfg, rnd, mask) {
 }
 
 // ============================================================== THE PACK
+/**
+ * @param {object} [cfg]
+ * @param {{body:{aspect:number}, skirt:{aspect:number}}} [cfg.wrap]
+ *        The band proportions of the jar this pack is FOR. Defaults to the
+ *        tall jar, which is what WRAP has always meant.
+ *
+ *        This exists because artWrap crops cover-style: hand a squat jar's
+ *        21.5:1 band to a canvas built at the tall jar's 7.194:1 and the
+ *        middle third of the label gets blown up and the rest thrown away.
+ *        Silently. The uploaded-artwork path promises a circle stays a circle,
+ *        and it can only keep that promise if it is told which jar.
+ */
 export function makeTemplatePack(cfg = CONFIG) {
   const C = { ...CONFIG, ...cfg };
+  const W_ = { ...WRAP, ...(C.wrap || {}) };
 
   const body = (W = 2048) => {
-    if (C.art?.body) return artWrap(C.art.body, W, WRAP.body.aspect, C);
+    if (C.art?.body) return artWrap(C.art.body, W, W_.body.aspect, C);
     const H = Math.round(W / 7.96);         // see WRAP: the drawn art predates the fix
     const rnd = mulberry32(0x7E511);
     const albedo = mk(W, H); const a = albedo.getContext('2d');
@@ -429,7 +442,7 @@ export function makeTemplatePack(cfg = CONFIG) {
   };
 
   const skirt = (W = 2048) => {
-    if (C.art?.skirt) return artWrap(C.art.skirt, W, WRAP.skirt.aspect, C);
+    if (C.art?.skirt) return artWrap(C.art.skirt, W, W_.skirt.aspect, C);
     const H = Math.round(W / 11.1);
     const rnd = mulberry32(0x7E522);
     const albedo = mk(W, H); const a = albedo.getContext('2d');

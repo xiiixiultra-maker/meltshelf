@@ -560,7 +560,8 @@ import { createResinCultureJarModel, createJarLights, LIGHTING } from './src/cre
 import { createSleeveJarModel, SLEEVE_DIM } from './src/createSleeveJarModel.js';
 import { makeTemplatePack, CONFIG } from './src/labelArtTemplate.js';
 import { AROMA, FLAVOUR, TERROIR, EXPERIENCE, ALL_AROMA } from './src/taxonomy.js';
-import { stitchWrap, splitJarWrap, FULL_ASPECT, TURNS } from './src/stitchWrap.js';
+import { stitchWrap, splitJarWrap, fullAspect, wrapGeom, bandAspect, TURNS }
+  from './src/stitchWrap.js';
 import { db, profile, configured, SETUP_HELP } from './src/auth.js';
 import { WRAP } from './src/labelArtTemplate.js';
 import { converter, formatHex, differenceEuclidean } from 'culori';
@@ -1344,11 +1345,20 @@ function chooseRoute(r) {
  * straight off its width.
  */
 const SHAPES = {
-  tall:   { id: 'tall',   guide: 50 / 42,  factory: createResinCultureJarModel,
-            label: 'Tall jar' },
-  sleeve: { id: 'sleeve', guide: 52 / 35.88, factory: createSleeveJarModel,
-            label: 'Squat sleeve jar' },
+  tall:   { id: 'tall',   factory: createResinCultureJarModel, label: 'Tall jar' },
+  sleeve: { id: 'sleeve', factory: createSleeveJarModel, label: 'Squat sleeve jar' },
 };
+/* The guide box and the band proportions BOTH come from the wrap table, so
+   the rectangle drawn on the viewfinder, the aspect the photos are unwrapped
+   at, the heights the wrap is cut at and the canvases the bands are painted
+   onto are all one set of numbers. The sleeve guide used to say 52 / 35.88
+   while the model said something else, which is two jars wearing one name. */
+for (const [id, s] of Object.entries(SHAPES)) {
+  const g = wrapGeom(id);
+  s.guide = (2 * g.R) / g.H_TOTAL;
+  s.wrap = { body:  { aspect: bandAspect(g, g.body) },
+             skirt: { aspect: bandAspect(g, g.skirt) } };
+}
 
 function chooseShape(k) {
   CAP.shape = k;
@@ -1553,8 +1563,14 @@ function paintJar(hexColour, art, base, capTop, skirt) {
   // cached one would keep painting the previous session's label.
   // The sleeve jar takes the same pack: one wrap, one top, one base. That is
   // the whole reason both factories share an options shape.
+  const shape = SHAPES[CAP.shape] ?? SHAPES.tall;
   const pack = art
     ? makeTemplatePack({ ...CONFIG, name: 'Captured jar',
+                         // Which jar's band proportions to paint onto. The
+                         // pack crops cover-style, so without this a squat
+                         // jar's band is painted on a tall jar's canvas and
+                         // the middle third is blown up over the rest.
+                         wrap: shape.wrap,
                          // Smooth black glass. Grip ribs are a design choice
                          // that belongs to an invented jar, not to a
                          // photograph of somebody's real one.
@@ -1566,8 +1582,7 @@ function paintJar(hexColour, art, base, capTop, skirt) {
     : (tPack ||= makeTemplatePack({ ...CONFIG, card: { ...CONFIG.card, show: false } }));
   const tPackUsed = pack;
   if (jar) { jar.userData.sculptRuntime.dispose(); scene.remove(jar); }
-  const build = (SHAPES[CAP.shape] ?? SHAPES.tall).factory;
-  jar = build({
+  jar = shape.factory({
     label: { ...tPackUsed,
              contents: { color: hexColour, attenuation: hexColour, blockout: 0xcccccc },
              lighting: LIGHTING.studio },
@@ -1616,8 +1631,13 @@ function buildWrap() {
     // so four and six both work with no special casing. FULL jar, not the body
     // band: the guide box was the whole jar, and asking for body aspect
     // squashed 42mm of jar into 21.8mm of label.
-    CAP.wrap = stitchWrap(CAP.outside, { width: TARGET.w, aspect: FULL_ASPECT });
-    CAP.bands = splitJarWrap(CAP.wrap);
+    //
+    // Both of these take the SHAPE now. They used to be the tall jar's numbers
+    // whichever shape had been chosen, so a squat jar was unwrapped at the
+    // wrong proportion and then cut at a height it does not have.
+    CAP.wrap = stitchWrap(CAP.outside,
+      { width: TARGET.w, aspect: fullAspect(CAP.shape) });
+    CAP.bands = splitJarWrap(CAP.wrap, CAP.shape);
   }
   return !!CAP.wrap;
 }
@@ -1741,6 +1761,10 @@ $('save').addEventListener('click', async () => {
 
     // ---- 1. the row, so the storage policies have something to join to ----
     const spec = {};
+    // WHICH JAR THIS IS. Without it the shelf had no way to know, so it built
+    // the tall jar for everybody: a squat jar photographed here came back as
+    // a different jar wearing bands cut for a height it does not have.
+    spec.shape = CAP.shape || 'tall';
     const proc = ($('e-process').value || '').trim();
     if (proc) spec.process = proc;
     spec.sample = { L: +S.colour.L.toFixed(4), C: +S.colour.C.toFixed(4),

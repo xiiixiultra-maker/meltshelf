@@ -319,40 +319,101 @@ export function stitchWrap(shots, opts = {}) {
    box being photographed was the whole jar. So 42mm of jar was squashed into
    21.8mm of band, the label sat compressed into the bottom half, and the cap
    fell back to the template's own drawn art complete with its grip ribs.
+
+   THE SECOND BUG, AND WHY THIS IS A TABLE NOW: those numbers were the TALL
+   jar's, hard-coded, while capture already offered two shapes. The squat
+   sleeve jar is 33mm tall with its seam a third of the way up instead of
+   halfway, so a sleeve jar's label was being cut at a height that does not
+   exist on it. The geometry has to come from the shape, so it does.
    ===================================================================== */
-export const JAR = {
-  H_TOTAL: 42.0,
-  body:  { lo: 1.60,  hi: 23.40, aspect: 7.194 },
-  skirt: { lo: 23.75, hi: 39.15, aspect: 10.224 },
+
+/**
+ * Where the printing sits on each jar we can build. Millimetres from the heel.
+ *
+ * TALL is the Resin Culture jar, carried over unchanged: those numbers were
+ * measured against a jar the site already renders correctly and there is no
+ * reason to disturb them.
+ *
+ * SLEEVE is measured off Remmy's own Melon Sunkist jar, seven intact shots
+ * plus six after the band was torn to open it. Read as fractions of the jar's
+ * height, off the three least foreshortened frames, which agreed inside 3%:
+ *
+ *     H / D            0.65      distinctly wider than it is tall
+ *     bare wood crown  top 6.4%
+ *     printed band     6.4% .. 93.3%
+ *     bare glass heel  bottom 6.7%
+ *     seam             29.7% up from the base
+ *
+ * The seam is where the torn jar tore, which is the one place the photographs
+ * state it outright: above the tear the band sits on wood, below it on glass,
+ * and the two halves are turned relative to each other because the cap has
+ * been unscrewed since. That is the split, and it is ours to make in the
+ * renderer rather than to copy: modelling the tear itself would bake one
+ * owner's particular rip into every jar the site ever draws.
+ */
+export const WRAP_GEOM = {
+  tall: {
+    id: 'tall', H_TOTAL: 42.00, R: 25.00, seam: 23.575,
+    body:  { lo: 1.60,  hi: 23.40 },
+    skirt: { lo: 23.75, hi: 39.15 },
+  },
+  sleeve: {
+    id: 'sleeve', H_TOTAL: 33.20, R: 25.50, seam: 9.85,
+    body:  { lo: 2.22, hi:  9.68 },
+    skirt: { lo: 10.03, hi: 31.07 },
+  },
 };
 
-/** Circumference over height. What a photograph of a whole jar unwraps to. */
-export const FULL_ASPECT = (2 * Math.PI * 25.0) / JAR.H_TOTAL;   // 3.74
+/** The geometry for a shape id, defaulting to the jar most people photograph. */
+export function wrapGeom(shape) {
+  return (shape && WRAP_GEOM[shape]) || WRAP_GEOM.tall;
+}
+
+/**
+ * Circumference over band height.
+ *
+ * COMPUTED, never written down twice. The old table carried both the band
+ * heights and their aspects, which is two statements of one fact and an
+ * invitation for them to disagree; the comment on splitJarWrap literally said
+ * "if it ever stretches, one of the constants has drifted".
+ */
+export const bandAspect = (g, b) => (2 * Math.PI * g.R) / (b.hi - b.lo);
+
+/** What a photograph of a whole jar of this shape unwraps to. */
+export function fullAspect(shape) {
+  const g = wrapGeom(shape);
+  return (2 * Math.PI * g.R) / g.H_TOTAL;
+}
 
 /**
  * Cut a full-jar wrap into the two bands the renderer needs.
  *
  * @param {CanvasImageSource & {width:number, height:number}} full
  *        A wrap of the ENTIRE jar, top edge at the crown, bottom at the heel.
+ * @param {string} [shape]  'tall' | 'sleeve'
  */
-export function splitJarWrap(full) {
-  const H = JAR.H_TOTAL;
+export function splitJarWrap(full, shape) {
+  const g = wrapGeom(shape);
+  const H = g.H_TOTAL;
   // Millimetres from the heel become rows from the TOP of the image.
   const band = (b) => {
     const vTop = (H - b.hi) / H;
     const vBot = (H - b.lo) / H;
     const sy = Math.round(vTop * full.height);
     const sh = Math.max(1, Math.round((vBot - vTop) * full.height));
-    const out = mk(full.width, Math.max(1, Math.round(full.width / b.aspect)));
-    // Source and destination are already the same proportion, so this is a
-    // resample, not a stretch. If it ever stretches, one of the constants
-    // above has drifted from the model.
+    const out = mk(full.width, Math.max(1, Math.round(full.width / bandAspect(g, b))));
+    // Source and destination are the same proportion by construction now, so
+    // this is a resample and cannot be a stretch.
     out.getContext('2d').drawImage(full, 0, sy, full.width, sh,
                                    0, 0, out.width, out.height);
     return out;
   };
-  return { body: band(JAR.body), skirt: band(JAR.skirt) };
+  return { body: band(g.body), skirt: band(g.skirt) };
 }
+
+/* Kept for callers that predate the table. Both mean the tall jar. */
+export const JAR = WRAP_GEOM.tall;
+export const FULL_ASPECT = fullAspect('tall');   // 3.74
 
 /**
  * The guide the capture screen draws, and the rect the stitcher expects, are

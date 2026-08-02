@@ -389,6 +389,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createResinCultureJarModel, createJarLights, CONTENTS, LIGHTING, DIM }
   from './src/createJarModel.js';
+import { createSleeveJarModel } from './src/createSleeveJarModel.js';
+import { wrapGeom, bandAspect } from './src/stitchWrap.js';
 import { makeCharrasPack } from './src/labelArtCharras.js';
 import { makeTemplatePack, CONFIG } from './src/labelArtTemplate.js';
 import { converter, differenceEuclidean } from 'culori';
@@ -609,17 +611,22 @@ function makeWishlist(root, colour) {
 /** Prototype jars carry an orange band ON the jar, at mid height. The marker
  *  has to survive a screenshot, so it cannot live in page furniture. */
 function markPrototype(root) {
+  // The jar's own numbers, not the tall jar's. The squat jar is 25.5 across
+  // where DIM says 25, so a band drawn at DIM.R + 0.5 landed exactly on its
+  // label and the two flickered against each other; and 11.5mm up a 33mm jar
+  // is not mid height. Both come off the model now.
+  const D = root.userData.sculptRuntime?.dimensions ?? DIM;
   const band = new THREE.Mesh(
-    new THREE.CylinderGeometry(DIM.R + 0.5, DIM.R + 0.5, 3.0, 96, 1, true),
+    new THREE.CylinderGeometry(D.R + 0.9, D.R + 0.9, 3.0, 96, 1, true),
     new THREE.MeshBasicMaterial({
       color: new THREE.Color('#FF7A18'), side: THREE.DoubleSide,
       transparent: true, opacity: 0.82,
     }),
   );
-  band.position.y = 11.5;
+  band.position.y = D.H_TOTAL * 0.274;
   root.add(band);
   const base = new THREE.Mesh(
-    new THREE.RingGeometry(DIM.R + 3, DIM.R + 6, 64),
+    new THREE.RingGeometry(D.R + 3, D.R + 6, 64),
     new THREE.MeshBasicMaterial({ color: new THREE.Color('#FF7A18'),
       transparent: true, opacity: 0.42, side: THREE.DoubleSide }),
   );
@@ -678,6 +685,29 @@ async function loadStoredArt(item) {
   return Object.keys(art).length ? art : null;
 }
 
+/**
+ * The jar shapes this shelf can build, and the one number each needs.
+ *
+ * bodyAspect comes from the same table capture cut the bands with, so the
+ * texture asked for here and the texture stored there cannot disagree about
+ * what proportion the band is.
+ */
+const SHAPES = {};
+for (const [id, factory] of Object.entries({
+  tall: createResinCultureJarModel, sleeve: createSleeveJarModel,
+})) {
+  const g = wrapGeom(id);
+  SHAPES[id] = {
+    factory,
+    bodyAspect: bandAspect(g, g.body),
+    // Handed to makeTemplatePack so a stored band is painted onto a canvas of
+    // its own proportion. Without it the pack builds every band at the tall
+    // jar's aspect and crops whatever does not fit.
+    wrap: { body: { aspect: bandAspect(g, g.body) },
+            skirt: { aspect: bandAspect(g, g.skirt) } },
+  };
+}
+
 async function build() {
   // Charras needs its logo decoded before the label can bake
   const logo = await decodeImage('./assets/charras-logo.png');
@@ -692,9 +722,10 @@ async function build() {
 
     // A jar photographed by its owner wears its own wrap, and no grip ribs:
     // real jars are smooth black glass.
+    const shape = SHAPES[item.spec?.shape] ?? SHAPES.tall;
     const stored = await loadStoredArt(item);
     const label = stored
-      ? { ...makeTemplatePack({ ...CONFIG, name: item.name,
+      ? { ...makeTemplatePack({ ...CONFIG, name: item.name, wrap: shape.wrap,
                                 cap: { ...CONFIG.cap, knurl: false }, art: stored }),
           contents: tint, lighting: LIGHTING.studio }
       : item.key === 'charras'
@@ -710,11 +741,18 @@ async function build() {
       : { ...makeTemplatePack({ ...CONFIG, name: item.name }),
           contents: tint, lighting: LIGHTING.studio };
 
-    const jar = createResinCultureJarModel({
+    /* WHICH JAR. The shelf used to build the Resin Culture jar for every row,
+       whatever had been photographed, so a squat jar captured through the
+       sleeve guide came back as a tall one. The shape travels with the entry
+       now, and an unknown value falls back to the jar most people own rather
+       than to nothing. */
+    const jar = shape.factory({
       label,
-      // textureSize is the wrap WIDTH and the body wrap is 7.194:1, so this
-      // gives the label about 300px of vertical resolution at shelf scale
-      textureSize: Math.round(300 * 7.194),
+      // textureSize is the wrap WIDTH, so this asks for about 300px of
+      // vertical resolution on the body band of WHICHEVER jar this is: the
+      // two shapes have very different band aspects and a constant here gave
+      // the squat jar's short band four times the pixels it can show.
+      textureSize: Math.round(300 * shape.bodyAspect),
       anisotropy: renderer.capabilities.getMaxAnisotropy(),
     });
     jar.position.set(item.x, 0, 0);
@@ -752,8 +790,14 @@ for (const [k, b] of Object.entries(BAYS)) {
 const v = new THREE.Vector3();
 function placeCaptions() {
   for (const [k, b] of Object.entries(BAYS)) {
-    v.set(b.x, -10, 58).project(camera);
+    // The bay's REAL centre, which layout() worked out from what is in it.
+    // Since the plank started being cut to fit, BAYS.x has been a caption
+    // pointing at where a bay used to be. A bay holding nothing takes up no
+    // plank, so it has no centre to label and the caption stays hidden.
+    const cx = SHELF.centres[k];
     const el = bayEls[k];
+    if (cx === undefined) { el.style.opacity = 0; continue; }
+    v.set(cx, -10, 58).project(camera);
     const behind = v.z > 1;
     el.style.opacity = behind ? 0 : 1;
     el.style.left = ((v.x * 0.5 + 0.5) * innerWidth) + 'px';

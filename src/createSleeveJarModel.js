@@ -2,8 +2,8 @@
  * createSleeveJarModel.js — the squat sleeve jar (9Bottles type).
  *
  * The second jar the industry actually uses, and it is not the first one
- * rescaled. Measured off the reference photographs at H/D 0.69 against the
- * Resin Culture jar's 0.839, which is the difference between a jar that
+ * rescaled. Measured off thirteen reference photographs at H/D 0.65 against
+ * the Resin Culture jar's 0.839, which is the difference between a jar that
  * stands and a jar that sits.
  *
  * WHAT MAKES IT THIS JAR RATHER THAN A CYLINDER
@@ -27,7 +27,8 @@
  * as two rings cut at the seam, sharing one continuous artwork: closed they
  * butt together and read as one sleeve, and the upper ring travels with the
  * cap when it unscrews. That is also what happens to the real band the first
- * time somebody opens one.
+ * time somebody opens one, and the reference photographs show it: the torn
+ * jar's two halves no longer line up, because the cap has been turned since.
  *
  * The screw itself is NOT re-derived. Thread pitch and turn count are never
  * visible under a cap in a photograph, so this reuses the verified constants
@@ -46,53 +47,68 @@ import {
 /**
  * Millimetres. Proportion is measured; absolute scale is a choice.
  *
- * The outer diameter is set to 52 so this jar and the 50mm Resin Culture jar
- * sit on one shelf at a believable relative size. Everything else follows the
- * ratios read off grid_IMG_8956 (height 610px across the axis, diameter
- * 885px, cap wall visible 0.107 of the height, sleeve 0.83, glass below the
- * sleeve 0.066).
+ * WHERE THESE COME FROM
+ * Thirteen photographs of Remmy's own Melon Sunkist jar: seven with the band
+ * intact and six after it was torn open. Read as fractions of the jar's height
+ * off the three least foreshortened frames, which agreed inside 3%:
+ *
+ *     H / D            0.65      wider than it is tall, and that IS the jar
+ *     bare wood crown  top 6.4%
+ *     printed band     6.4% .. 93.3%
+ *     bare glass heel  bottom 6.7%
+ *     seam             29.7% up from the base
+ *     neck / body      0.80 of the outer radius
+ *     cap-top sticker  0.84 of the cap radius
+ *
+ * WHAT THE FIRST VERSION GOT WRONG, AND WHY
+ * It read 0.69 for H/D, which is close, and 0.46 of the height for the cap,
+ * which is not: the cap is 0.70 of it. The mistake was reading the band of
+ * BARE wood as if it were the cap. Almost the whole cap is under the label.
+ *
+ * The seam is where the torn jar tore. That is the one place the photographs
+ * state it outright: above the tear the band sits on wood, below it on glass,
+ * and the two halves are turned relative to each other because the cap has
+ * been unscrewed since. The tear is at 0.70 from the crown, so the cap is a
+ * deep 23mm puck over a shallow 10mm dish, which is exactly what the open jar
+ * shows and exactly right for a concentrate jar: 5ml in this bore is a 5mm
+ * pool, so the glass has no reason to be tall.
  */
 export const SLEEVE_DIM = {
-  R: 26.0,                  // outer radius
-  H_TOTAL: 35.88,           // 0.69 * D, the whole point of this jar
+  R: 25.50,                 // outer radius, D = 51
+  H_TOTAL: 33.20,           // 0.65 * D, the whole point of this jar
 
-  // The cap is HALF the jar. Four independent readings of the photographs put
-  // it at 0.45, 0.46, 0.46 and 0.49 of the total height. An earlier 0.30 came
-  // from measuring the band of BARE wood, which is small only because the
-  // sleeve covers most of the cap.
-  H_CAP: 16.50,             // 0.46 * H
-  Y_SEAM: 19.38,            // H_TOTAL - H_CAP
+  // The cap is 0.70 of the jar and nearly all of it is under the label.
+  Y_SEAM: 9.85,             // 0.297 * H, where the cap parts from the body
+  H_CAP: 23.35,             // H_TOTAL - Y_SEAM
 
-  R_NECK: 21.5,
-  R_BORE: 18.0,
-  Y_NECK_BASE: 16.8,        // shoulder starts below the seam
-  Y_RIM: 27.5,              // the glass mouth, up inside the cap
-  Y_FLOOR: 3.0,
-  PUNT_DEPTH: 1.1,          // base recess: the jar stands on a rim, not a disc
-  PUNT_R: 0.86,             // fraction of R
-  BASE_PANEL_R: 0.765,      // printed disc inside the punt, fraction of R
+  R_NECK: 20.40,            // 0.80 * R, measured off the open jar
+  R_BORE: 17.20,
+  Y_NECK_BASE: 11.60,       // shoulder, just above the cap's bottom edge
+  Y_RIM: 25.00,             // the glass mouth, up inside the cap
+  Y_FLOOR: 3.60,
+  PUNT_DEPTH: 1.10,         // base recess: the jar stands on a rim, not a disc
+  PUNT_R: 0.62,             // fraction of R, off the base photograph
+  BASE_PANEL_R: 0.50,       // printed disc inside the punt, fraction of R
 
-  // The sleeve
+  // The label. One printed band wrapped round the whole jar and cut at the
+  // seam, so it splits when the cap turns, the same rule as the other jars.
   SLEEVE_T: 0.18,           // paper thickness, and the height of the crease
-  SLEEVE_BOTTOM: 1.97,      // 0.055 * H, leaving a strip of glass below
-  SLEEVE_TOP: 33.55,        // 0.065 H of bare wood left above it
-  SLEEVE_LOOSE: 0.22,       // how far the top edge lifts off the glass
+  SLEEVE_BOTTOM: 2.22,      // 0.067 * H of bare glass left below it
+  SLEEVE_TOP: 31.07,        // 0.064 * H of bare wood left above it
+  SLEEVE_LOOSE: 0.18,       // how far the top edge lifts off the wood
   SEAM_ARC: 0.35,           // ~20 degrees, about 9mm of lap at this radius
+  KERF: 0.35,               // the hairline the two bands butt across
 
-  // THE CUT. A single flat ring at 0.69 of the height measured from the top,
-  // which is about 0.23 H BELOW the wood/glass seam, down on the glass. The
-  // owner's own cut wanders roughly 0.035 H around the circumference; this is
-  // the clean version of it, which is what they asked for.
-  CUT_Y: 11.12,             // H_TOTAL * (1 - 0.69)
-  CUT_GAP: 0.75,            // 0.021 * H, the width of the kerf
-
-  STICKER_R: 0.80,          // cap-top sticker, fraction of the cap radius;
-                            // measured against the top reference, which leaves a
-                            // wider ring of bare wood than the first estimate
+  STICKER_R: 0.84,          // cap-top sticker, fraction of the cap radius
 
   // Not re-derived: see the header.
   PITCH: JAR_DIM.PITCH,
   TURNS: JAR_DIM.TURNS,
+};
+/** Where each band starts and stops, so nothing computes it twice. */
+SLEEVE_DIM.BAND = {
+  glass: { lo: SLEEVE_DIM.SLEEVE_BOTTOM, hi: SLEEVE_DIM.Y_SEAM - SLEEVE_DIM.KERF / 2 },
+  cap:   { lo: SLEEVE_DIM.Y_SEAM + SLEEVE_DIM.KERF / 2, hi: SLEEVE_DIM.SLEEVE_TOP },
 };
 SLEEVE_DIM.LIFT = SLEEVE_DIM.PITCH * SLEEVE_DIM.TURNS;
 
@@ -246,19 +262,29 @@ function bodyProfile(D) {
   return p;
 }
 
-/** The cap: squat, wide, with a broken top edge. */
+/**
+ * The cap: a deep turned puck, FLUSH with the glass.
+ *
+ * The first version drew it at 0.96 of the jar's radius, which left a visible
+ * step at the seam. In every reference frame the wood and the glass are the
+ * same diameter and the join is a hairline: the label crosses it without ever
+ * changing radius, which is the reason a single band can wrap both.
+ */
 function capProfileSleeve(D) {
   const p = [];
-  const R = D.R * 0.96, h = D.H_CAP;
+  const R = D.R, h = D.H_CAP;
   p.push(new THREE.Vector2(0, 0));
-  p.push(new THREE.Vector2(D.R_NECK + 0.4, 0));
-  p.push(new THREE.Vector2(D.R_NECK + 0.4, 1.6));
-  p.push(new THREE.Vector2(R, 2.6));
-  p.push(new THREE.Vector2(R, h - 1.1));
-  // softened top edge, the bevel the reference shows
-  for (let i = 0; i <= 6; i++) {
-    const t = i / 6, ang = t * (Math.PI / 2);
-    p.push(new THREE.Vector2(R - 1.1 + Math.cos(ang) * 1.1, h - 1.1 + Math.sin(ang) * 1.1));
+  p.push(new THREE.Vector2(R - 0.5, 0));
+  // a small chamfer at the bottom edge, which is what catches the light along
+  // the seam and keeps the join from reading as a printed line
+  p.push(new THREE.Vector2(R, 0.6));
+  p.push(new THREE.Vector2(R, h - 1.2));
+  // Softened crown. 1.2 rather than 1.6: only 2.13mm of wood stands above the
+  // label, so a bigger roundover eats the whole band and the jar loses the
+  // flat strip of bare wood that catches the light in every reference frame.
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8, ang = t * (Math.PI / 2);
+    p.push(new THREE.Vector2(R - 1.2 + Math.cos(ang) * 1.2, h - 1.2 + Math.sin(ang) * 1.2));
   }
   p.push(new THREE.Vector2(0, h));
   return p;
@@ -459,7 +485,7 @@ export function createSleeveJarModel(options = {}) {
     const tex = canvasTexture(topMaps.albedo, { srgb: true, aniso });
     const m = new THREE.MeshPhysicalMaterial({ map: tex, ...FINISH.label });
     const disc = new THREE.Mesh(
-      new THREE.CircleGeometry(D.R * 0.96 * D.STICKER_R, 96), m,
+      new THREE.CircleGeometry(D.R * D.STICKER_R, 96), m,
     );
     disc.rotation.x = -Math.PI / 2;
     disc.position.y = D.H_CAP + 0.12;
@@ -470,63 +496,80 @@ export function createSleeveJarModel(options = {}) {
   }
 
   /* --------------------------------------------------------- the sleeve */
-  // One artwork, two rings, cut at the seam. Closed they butt together and
-  // read as a single band; the upper ring rides the cap when it unscrews.
-  // One artwork, split by the CUT rather than by the seam. Both halves stay
-  // with the jar: the upper one spans the wood/glass junction and wraps the
-  // lower half of the cap, and because it is a lapped tube rather than glued
-  // paper the cap simply rises out of it and comes away bare. That is what the
-  // photograph of the jar in pieces shows, and it is why neither band is
-  // parented to the lid.
-  const span = D.SLEEVE_TOP - D.SLEEVE_BOTTOM;
-  const vCut = (D.CUT_Y - D.SLEEVE_BOTTOM) / span;
+  /* ONE PRINTED BAND, CUT AT THE SEAM.
+   *
+   * This is the change the whole rebuild was for. The first version cut the
+   * band somewhere down on the glass and left BOTH halves on the jar, on the
+   * theory that a lapped paper tube would let the cap slide out of it. The
+   * reference says otherwise: above the tear the paper is stuck to wood, below
+   * it to glass, and the two halves sit at different angles because the cap
+   * has been turned since. It is a tamper band. It tears at the seam and the
+   * top half leaves with the lid.
+   *
+   * So the cut is the seam, the lower band belongs to the glass and the upper
+   * band is parented to the LID. Turn the cap and the label splits, which is
+   * the rule the Resin Culture and Charras jars already follow and the thing
+   * that makes a jar read as an object rather than a decal.
+   */
+  const B = D.BAND;
+  const CIRC = 2 * Math.PI * D.R;
 
-  const sleeveMat = new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color(label.body ? '#FFFFFF' : '#C4327F'),
-    ...FINISH.paper,
-    envMapIntensity: 0.6,
-    side: THREE.DoubleSide,
-  });
-  if (showMaterials) {
-    const bodyMaps = faceMaps(label.body, texSize);
-    if (bodyMaps) {
-      const t = canvasTexture(bodyMaps.albedo, { srgb: true, aniso });
-      sleeveMat.map = t;
-      disposables.push(t);
-      // Paper has its own roughness; a pack's roughness map is for the printed
-      // ink on it, so the two are multiplied rather than one replacing the other.
-      if (bodyMaps.roughness) {
-        const r2 = canvasTexture(bodyMaps.roughness, { aniso });
-        sleeveMat.roughnessMap = r2; sleeveMat.roughness = 1.0;
-        disposables.push(r2);
+  /** One band's material. Two bands, two textures, one recipe. */
+  function bandMaterial(face, mm, seed) {
+    const m = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(face ? '#FFFFFF' : '#C4327F'),
+      ...FINISH.paper,
+      envMapIntensity: 0.6,
+      side: THREE.DoubleSide,
+    });
+    if (showMaterials) {
+      const maps = faceMaps(face, texSize);
+      if (maps) {
+        const t = canvasTexture(maps.albedo, { srgb: true, aniso });
+        m.map = t;
+        disposables.push(t);
+        // Paper has its own roughness; a pack's roughness map is for the ink
+        // printed on it, so the two multiply rather than one replacing the other.
+        if (maps.roughness) {
+          const r2 = canvasTexture(maps.roughness, { aniso });
+          m.roughnessMap = r2; m.roughness = 1.0;
+          disposables.push(r2);
+        }
       }
+      // Fibre tooth, tiled to stay ISOTROPIC: the two bands are very different
+      // heights, so a shared repeat would stretch the grain on the short one
+      // into streaks. Repeats are set from the band's real size in millimetres.
+      const nrm = canvasTexture(paperNormal(256, seed), { aniso, repeatX: 26 });
+      nrm.wrapT = THREE.RepeatWrapping;
+      nrm.repeat.set(26, Math.max(1, Math.round(26 * mm / CIRC)));
+      m.normalMap = nrm;
+      m.normalScale = new THREE.Vector2(0.24, 0.24);
+      disposables.push(nrm);
     }
-    const nrm = canvasTexture(paperNormal(256, 0x9A17), { aniso, repeatX: 26 });
-    nrm.wrapT = THREE.RepeatWrapping; nrm.repeat.set(26, 5);
-    sleeveMat.normalMap = nrm;
-    sleeveMat.normalScale = new THREE.Vector2(0.24, 0.24);
-    disposables.push(nrm);
+    disposables.push(m);
+    return m;
   }
-  disposables.push(sleeveMat);
 
-  const lower = new THREE.Mesh(
-    sleeveRing(D, D.SLEEVE_BOTTOM, D.CUT_Y, 0, vCut, false), sleeveMat,
+  // The band on the glass. Its whole texture is its own band, so v runs 0..1.
+  const glassBand = new THREE.Mesh(
+    sleeveRing(D, B.glass.lo, B.glass.hi, 0, 1, false),
+    bandMaterial(label.body, B.glass.hi - B.glass.lo, 0x9A17),
   );
-  lower.name = 'sleeve-lower';
-  lower.castShadow = lower.receiveShadow = true;
-  jarBody.add(lower);
-  meshes['sleeve-lower'] = lower;
+  glassBand.name = 'sleeve-lower';
+  glassBand.castShadow = glassBand.receiveShadow = true;
+  jarBody.add(glassBand);
+  meshes['sleeve-lower'] = glassBand;
 
-  // The kerf: a real gap, not a drawn line. Both cut faces are open paper
-  // edges, which is what makes a clean cut read as a cut rather than a seam.
-  const upper = new THREE.Mesh(
-    sleeveRing(D, D.CUT_Y + D.CUT_GAP, D.SLEEVE_TOP,
-               vCut + D.CUT_GAP / span, 1, true), sleeveMat,
+  // The band on the cap, in the LID's frame so it travels with it. Heights are
+  // the same millimetres measured from the seam instead of from the heel.
+  const capBand = new THREE.Mesh(
+    sleeveRing(D, B.cap.lo - D.Y_SEAM, B.cap.hi - D.Y_SEAM, 0, 1, true),
+    bandMaterial(label.skirt ?? label.body, B.cap.hi - B.cap.lo, 0x51CE),
   );
-  upper.name = 'sleeve-upper';
-  upper.castShadow = upper.receiveShadow = true;
-  jarBody.add(upper);
-  meshes['sleeve-upper'] = upper;
+  capBand.name = 'sleeve-upper';
+  capBand.castShadow = capBand.receiveShadow = true;
+  lid.add(capBand);
+  meshes['sleeve-upper'] = capBand;
 
   /* ------------------------------------------------------- the contents */
   const tint = label.contents ?? CONTENTS.warmBlonde;
@@ -553,10 +596,11 @@ export function createSleeveJarModel(options = {}) {
     }));
     mound.name = 'rosin-mound';
     // The mound geometry was authored for the tall jar's 42mm interior. Dropped
-    // straight in here it topped out at y=23 in a jar whose neck starts at 26,
-    // so the jar read as filled to the brim. Wider and much shallower: this
-    // bore is 18 against 17.5, and the fill has a third less headroom to use.
-    mound.scale.set(D.R_BORE / 17.5, 0.34, D.R_BORE / 17.5);
+    // in unscaled it fills this jar to the brim, because the whole cavity here
+    // is 21mm deep against that jar's 32. Scaled to the bore across, and to the
+    // headroom it actually has up the axis: five millilitres in a 17mm bore is
+    // a five millimetre pool, so a shallow one is the honest shape.
+    mound.scale.set(D.R_BORE / 17.5, 0.30, D.R_BORE / 17.5);
     contents.add(mound);
     meshes['rosin-mound'] = mound;
     disposables.push(mound.material);
@@ -569,9 +613,12 @@ export function createSleeveJarModel(options = {}) {
   sockets['base-punt'] = { position: [0, D.PUNT_DEPTH, 0], axis: [0, -1, 0] };
   sockets['body-wall'] = { position: [0, D.SLEEVE_BOTTOM, 0], axis: [0, 1, 0] };
   colliders['body'] = { type: 'cylinder', radius: D.R, height: D.H_TOTAL };
-  destructionGroups['lid'] = ['cap-shell', 'cap-thread', 'cap-sticker'];
+  // sleeve-upper moved sides: it is stuck to the wood, so it leaves with the
+  // lid. Leaving it in the jar's group would have the label survive an impact
+  // that took the cap off, which is the opposite of how a tamper band fails.
+  destructionGroups['lid'] = ['cap-shell', 'cap-thread', 'cap-sticker', 'sleeve-upper'];
   destructionGroups['jar'] = ['glass-body', 'neck-thread', 'base-panel',
-                              'sleeve-lower', 'sleeve-upper'];
+                              'sleeve-lower'];
 
   const capHome = lid.position.clone();
 
@@ -588,10 +635,11 @@ export function createSleeveJarModel(options = {}) {
 
     const free = Math.max(0, tt - 1);
     const e = free * free * (3 - 2 * free);
-    // Rises clear of the paper collar before it travels sideways: the collar
-    // now reaches 14mm up the cap, so the old 10mm arc dragged the cap through
-    // it on the way out.
-    lid.position.y += Math.sin(e * Math.PI) * 17.0 - e * (D.Y_SEAM + D.LIFT - 0.6);
+    // Rises clear of the GLASS RIM before it travels sideways. The paper collar
+    // the old 17mm arc was dodging is gone: the upper band is parented to the
+    // lid now and leaves with it. What is left to clear is the neck, whose rim
+    // stands at 25 while the thread only lifts the cap to 18.
+    lid.position.y += Math.sin(e * Math.PI) * 9.0 - e * (D.Y_SEAM + D.LIFT - 0.6);
     lid.position.x = capHome.x - e * 58.0;
     lid.position.z = capHome.z + e * 12.0;
     lid.rotation.z = e * 0.15;
@@ -642,7 +690,7 @@ export const JAR_TYPES = {
   sleeve: {
     id: 'sleeve',
     name: 'Squat sleeve jar',
-    blurb: 'Shorter and wider, wooden cap, paper sleeve with a visible crease.',
-    heightOverDiameter: 0.69,
+    blurb: 'Shorter and wider, deep wooden cap, paper band cut at the seam.',
+    heightOverDiameter: 0.65,
   },
 };
