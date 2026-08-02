@@ -1591,6 +1591,37 @@ function paintJar(hexColour, art, base, capTop, skirt) {
    the pictures, which is also why the privacy copy on the home page is a
    statement rather than a promise.
    ===================================================================== */
+/**
+ * Build the wrap and its bands from whatever the session holds.
+ *
+ * The ONLY place that knows how. Generate calls it; save calls it too when
+ * nothing has been generated yet, because a save that quietly uploads nothing
+ * is the bug that put a jar in the database with no face.
+ *
+ * Returns false when there is not enough to build from.
+ */
+function buildWrap() {
+  if (CAP.route === 'artwork') {
+    if (!CAP.art.img) return false;
+    // Enlarge FIRST, compose second. Composing at the source size and then
+    // scaling the finished wrap would resample the ground and the shadow as
+    // well, and soften edges that were never soft.
+    const big = upscaleTo(CAP.art.img,
+      Math.round(TARGET.w * (CAP.art.mode === 'card' ? CAP.art.w : 1)));
+    CAP.wrap = composeWrapFromLabel(big, CAP.art);
+    CAP.bands = null;                 // a flat label IS the body band already
+  } else {
+    if (CAP.outside.length < CAP.min) return false;
+    // stitchWrap divides the circumference by however many shots it is given,
+    // so four and six both work with no special casing. FULL jar, not the body
+    // band: the guide box was the whole jar, and asking for body aspect
+    // squashed 42mm of jar into 21.8mm of label.
+    CAP.wrap = stitchWrap(CAP.outside, { width: TARGET.w, aspect: FULL_ASPECT });
+    CAP.bands = splitJarWrap(CAP.wrap);
+  }
+  return !!CAP.wrap;
+}
+
 $('generate').addEventListener('click', async () => {
   const ready = CAP.route === 'artwork' ? !!CAP.art.img : CAP.outside.length >= CAP.min;
   if (!ready || !facesReady() || !S.colour) return;
@@ -1601,29 +1632,13 @@ $('generate').addEventListener('click', async () => {
   // stitch blocks the main thread.
   await new Promise((r) => setTimeout(r, 16));
   try {
-    if (CAP.route === 'artwork') {
-      // Enlarge FIRST, compose second. Composing at the source size and then
-      // scaling the finished wrap would resample the ground and the shadow as
-      // well, and soften edges that were never soft.
-      const big = upscaleTo(CAP.art.img, Math.round(TARGET.w * (CAP.art.mode === 'card' ? CAP.art.w : 1)));
-      CAP.wrap = composeWrapFromLabel(big, CAP.art);
-    } else {
-        // stitchWrap divides the circumference by however many shots it is
-      // given, so four and six both work with no special casing.
-      // FULL jar, not the body band. The guide box was the whole jar, so
-      // asking for body aspect squashed 42mm of jar into 21.8mm of label.
-      CAP.wrap = stitchWrap(CAP.outside, { width: TARGET.w, aspect: FULL_ASPECT });
-    }
+    buildWrap();
     const art = await createImageBitmap(CAP.wrap);
     const base = CAP.bottom ? await createImageBitmap(CAP.bottom) : null;
     const cap = CAP.top ? await createImageBitmap(CAP.top) : null;
-    // A full-jar wrap is cut at the seam so the label splits when the lid
-    // turns. The artwork route supplies a flat label, which is the body band
-    // already, so it is not cut.
-    // Kept on CAP so save uploads these exact canvases: what is stored is
-    // then what was rendered, not a second stitch that might differ.
-    const bands = CAP.route === 'photo' ? splitJarWrap(CAP.wrap) : null;
-    CAP.bands = bands;
+    // buildWrap already cut the bands at the seam, and save uploads those
+    // exact canvases, so what is stored is what was rendered.
+    const bands = CAP.bands;
     const skirt = bands ? await createImageBitmap(bands.skirt) : null;
     const bodyArt = bands ? await createImageBitmap(bands.body) : art;
     paintJar(S.colour.captured, bodyArt, base, cap, skirt);
@@ -1700,6 +1715,15 @@ $('save').addEventListener('click', async () => {
 
   const name = ($('e-name').value || '').trim();
   if (!name) { out.textContent = 'Give the jar a name first.'; $('e-name').focus(); return; }
+
+  // Build the wrap now if generate was never pressed. Uploading nothing and
+  // reporting success is how a jar ended up in the database with no face.
+  if (!CAP.wrap && !buildWrap()) {
+    out.textContent = CAP.route === 'artwork'
+      ? 'No label loaded yet, so there is nothing to put on the jar.'
+      : 'Not enough outside shots yet: ' + CAP.outside.length + ' of ' + CAP.min + '.';
+    return;
+  }
 
   btn.disabled = true;
   out.textContent = 'Saving.';
@@ -1781,12 +1805,18 @@ $('save').addEventListener('click', async () => {
       if (updErr) console.warn('[meltshelf] art_parts not recorded', updErr);
     }
 
-    out.innerHTML = 'Saved to your shelf as <b style="color:var(--green)">'
-      + escText(name) + '</b>. '
-      + (parts.length ? 'Artwork stored (' + parts.join(', ') + '). '
-                      : 'No artwork stored. ')
-      + 'It is private until you list it. '
-      + '<a href="./app.html" style="color:var(--green)">Open your shelf</a>';
+    if (!parts.length) {
+      // The row exists but the jar has no face. Say so plainly rather than
+      // reporting a save that will render as the generic template.
+      out.innerHTML = 'Saved as <b>' + escText(name) + '</b>, but NO artwork '
+        + 'reached storage, so it will draw as a blank jar. The console has '
+        + 'the reason. <a href="./app.html" style="color:var(--green)">Open your shelf</a>';
+    } else {
+      out.innerHTML = 'Saved to your shelf as <b style="color:var(--green)">'
+        + escText(name) + '</b>. Artwork stored (' + parts.join(', ') + '). '
+        + 'It is private until you list it. '
+        + '<a href="./app.html" style="color:var(--green)">Open your shelf</a>';
+    }
   } catch (err) {
     console.error('[meltshelf] save failed', err);
     out.textContent = 'Could not save: ' + (err.message || err);
