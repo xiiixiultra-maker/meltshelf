@@ -753,6 +753,10 @@ async function build() {
   await document.fonts.ready;
 
   for (const item of ROSTER) {
+   // ONE BAD JAR COSTS ONE JAR. This loop builds the whole shelf, so anything
+   // that throws inside it used to cost every jar after it as well, and the
+   // page would sit on "building your shelf" with no idea why.
+   try {
     // A jar whose artwork we hold renders with it. A jar whose artwork is not
     // stored yet renders as the template mould tinted with ITS OWN captured
     // colour, which is the part we actually have. Inventing a label would be
@@ -813,6 +817,10 @@ async function build() {
 
     scene.add(jar);
     jars.push(jar);
+   } catch (err) {
+     console.error('[meltshelf] could not build', item.name, err);
+     item.artNote = 'could not be drawn: ' + (err && err.message ? err.message : err);
+   }
   }
 
   /* Where each cap goes is decided AFTER the row exists, because the answer

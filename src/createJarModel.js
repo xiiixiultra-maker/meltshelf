@@ -692,8 +692,20 @@ export function createResinCultureJarModel(options = {}) {
   socket(jarBody, 'cavity-floor-socket', [0, DIM.Y_FLOOR, 0]);
   socket(jarBody, 'label-socket', [0, 6.9, 0]);
 
-  // body label wrap
-  if (showMaterials) {
+  /* body label wrap
+   *
+   * A NULL FACE MEANS "DO NOT BUILD THIS MESH", the same contract the sleeve
+   * jar has always honoured. It matters now because the callers started
+   * telling the truth: app.html and discover.html pass null for a band they
+   * do not actually hold, so that a missing band leaves bare glass instead of
+   * falling through to drawn stand-in artwork.
+   *
+   * Only `bottom` was guarded here, because until now every caller handed
+   * over a whole pack whose faces are all builder functions. A tall jar
+   * photographed without the optional cap-top shot stores art_parts as
+   * ['body','skirt'], so label.top is null, and `label.top(...)` threw. That
+   * took out the whole shelf: one jar, one TypeError, no jars. */
+  if (showMaterials && label.body) {
     const maps = label.body(texSize);
     const geo = new THREE.CylinderGeometry(DIM.R - 0.03, DIM.R - 0.05, DIM.LABEL_BODY_H, 128, 1, true);
     disposables.push(geo);
@@ -810,7 +822,10 @@ export function createResinCultureJarModel(options = {}) {
   }
 
   if (showMaterials) {
-    // skirt wrap
+    // skirt wrap. Guarded for the same reason as the body: a null face means
+    // the caller does not hold that band, and bare glass is the truthful
+    // answer rather than a TypeError.
+    if (label.skirt) {
     const sMaps = label.skirt(texSize);
     const sGeo = new THREE.CylinderGeometry(DIM.R + 0.06, DIM.R + 0.06, DIM.LABEL_SKIRT_H, 128, 1, true);
     disposables.push(sGeo);
@@ -821,8 +836,15 @@ export function createResinCultureJarModel(options = {}) {
     skirtWrap.castShadow = true; skirtWrap.receiveShadow = true;
     cap.add(skirtWrap);
     meshes['lid-label-wrap'] = skirtWrap;
+    }
 
-    // top emblem print, sitting in the 0.35 mm recess
+    // Top emblem print, sitting in the 0.35 mm recess.
+    //
+    // THIS IS THE ONE THAT ACTUALLY BIT. The cap-top shot is optional on the
+    // photo route, so a tall jar saved without it stores art_parts as
+    // ['body','skirt'] and arrives here with label.top === null. Unguarded,
+    // that threw before a single jar reached the shelf.
+    if (label.top) {
     const tMaps = label.top(Math.min(2048, texSize));
     const tGeo = new THREE.CircleGeometry(23.3, 96);
     disposables.push(tGeo);
@@ -848,6 +870,14 @@ export function createResinCultureJarModel(options = {}) {
     topPrint.rotation.x = -Math.PI / 2;
     topPrint.position.y = 18.05;
     topPrint.receiveShadow = true;
+    // Added HERE rather than after the base print, which is where these two
+    // lines used to live. Nesting the top's own attachment behind the base
+    // print's block was harmless while both were unconditional and is a
+    // scoping bug the moment either becomes optional.
+    cap.add(topPrint);
+    meshes['lid-top-print'] = topPrint;
+    }
+
     /* ---- the base print ----------------------------------------------
        Only built when the pack supplies one. Plenty of jars carry a batch
        code, a wash date or a QR on the bottom, and until now the model had
@@ -891,8 +921,6 @@ export function createResinCultureJarModel(options = {}) {
       jarBody.add(basePrint);
       meshes['jar-base-print'] = basePrint;
     }
-    cap.add(topPrint);
-    meshes['lid-top-print'] = topPrint;
   }
 
   socket(cap, 'cap-thread-socket', [0, 1.6, 0]);

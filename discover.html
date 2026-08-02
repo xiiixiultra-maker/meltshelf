@@ -192,6 +192,9 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createResinCultureJarModel, createJarLights, CONTENTS, LIGHTING }
   from './src/createJarModel.js';
+import { createSleeveJarModel } from './src/createSleeveJarModel.js';
+import { wrapGeom, bandAspect, maxCanvasWidth } from './src/stitchWrap.js';
+import { makeTemplatePack, CONFIG } from './src/labelArtTemplate.js';
 import { makeCharrasPack } from './src/labelArtCharras.js';
 
 /* =====================================================================
@@ -220,13 +223,16 @@ import { makeCharrasPack } from './src/labelArtCharras.js';
    invented one, and they disappear on their own once there are four.
    ===================================================================== */
 const EXAMPLES = [
-  { handle: '@coldroom', title: 'Winter rotation', jars: ['rodman','sour-diesel-bx2','charras'],
+  // Examples carry pack names in the same shape a real entry does, so the
+  // renderer has one code path rather than a branch on whether a jar is real.
+  { handle: '@coldroom', title: 'Winter rotation',
+    jars: [{ pack: 'rodman' }, { pack: 'sour-diesel-bx2' }, { pack: 'charras' }],
     n: 14, inhand: 12, processes: ['Ice water hash','Live rosin'], eg: true },
-  { handle: '@sixstaronly', title: 'Full melt or nothing', jars: ['sour-diesel-bx2','charras','rodman'],
+  { handle: '@sixstaronly', title: 'Full melt or nothing', jars: [{ pack: 'sour-diesel-bx2' }, { pack: 'charras' }, { pack: 'rodman' }],
     n: 31, inhand: 31, processes: ['Ice water hash'], eg: true },
-  { handle: '@thewashhouse', title: 'What we ran this month', jars: ['charras','rodman','sour-diesel-bx2'],
+  { handle: '@thewashhouse', title: 'What we ran this month', jars: [{ pack: 'charras' }, { pack: 'rodman' }, { pack: 'sour-diesel-bx2' }],
     n: 9, inhand: 6, processes: ['Live rosin','Dry sift'], eg: true },
-  { handle: '@piatella.club', title: 'Pressed and patient', jars: ['rodman','charras','sour-diesel-bx2'],
+  { handle: '@piatella.club', title: 'Pressed and patient', jars: [{ pack: 'rodman' }, { pack: 'charras' }, { pack: 'sour-diesel-bx2' }],
     n: 22, inhand: 15, processes: ['Temple ball','Dry sift'], eg: true },
 ];
 
@@ -239,11 +245,28 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 async function loadShelves() {
   if (!configured()) return [];
   const c = db();
-  const [{ data: shelves, error: e1 }, { data: entries, error: e2 }] = await Promise.all([
+  // id and art_parts are what make a captured jar drawable at all, and shape
+  // decides WHICH jar the bands belong to: the two cut their labels at
+  // different heights, so a squat jar drawn as a tall one wears its own
+  // artwork in the wrong places.
+  //
+  // shape is asked for SEPARATELY, and its absence is survivable. A static
+  // site and its database are deployed by two different people at two
+  // different moments, and this page went out first once: PostgREST answered
+  // 42703 column public_entries.shape does not exist, the whole call threw,
+  // and Discover showed nothing but the invented examples. A page that loses
+  // every real shelf because one optional column has not landed yet is worse
+  // than a page that draws a squat jar as a tall one for an afternoon.
+  const COLS = 'id, handle, name, pack, provenance, color_display, art_parts';
+  const [{ data: shelves, error: e1 }, entriesRes] = await Promise.all([
     c.from('public_shelves').select('*').order('last_listed', { ascending: false }),
-    c.from('public_entries').select('handle, name, pack, provenance, color_display'),
+    c.from('public_entries').select(COLS + ', shape'),
   ]);
   if (e1) throw e1;
+  let entries = entriesRes.data, e2 = entriesRes.error;
+  if (e2 && e2.code === '42703') {
+    ({ data: entries, error: e2 } = await c.from('public_entries').select(COLS));
+  }
   if (e2) throw e2;
 
   const byHandle = {};
@@ -253,10 +276,13 @@ async function loadShelves() {
     handle: '@' + (sh.display_name || sh.handle),
     href: './shelf.html?public=1',
     title: (sh.processes || []).join(' · ') || 'Current rotation',
-    // Pack names the built-in artwork. A jar captured from photographs has
-    // none yet, and gets the template mould tinted with its own colour, which
-    // is the honest fallback rather than borrowing somebody else's label.
-    jars: (byHandle[sh.handle] || []).map((e) => e.pack).filter(Boolean),
+    // The ENTRIES, not their pack names. A captured jar has no pack and used
+    // to be filtered out here, which is why a shelf of photographed jars drew
+    // as three grey moulds: by the time the renderer saw the list, the only
+    // jars left in it were the ones wearing built-in labels.
+    // Sliced to what a thumbnail shows, so a shelf of forty does not fetch
+    // forty jars' artwork to draw three.
+    jars: (byHandle[sh.handle] || []).slice(0, 3),
     tints: (byHandle[sh.handle] || []).map((e) => e.color_display),
     n: sh.jars,
     inhand: sh.in_hand,
@@ -297,6 +323,109 @@ const plank = new THREE.Mesh(
 plank.position.y = -3;
 scene.add(plank);
 
+/* =====================================================================
+   DRAWING SOMEBODY ELSE'S JAR
+
+   Three sources, in order of how much we actually know:
+
+     a built-in pack   one shared model, cloned. Cheap and unchanged.
+     stored artwork    the bands the owner photographed, off the jar-art
+                       bucket, on the shape they photographed it as
+     neither           the mould, tinted with the jar's own captured colour
+
+   The last one is not a failure state, it is the honest answer when there is
+   no artwork: better a grey jar than somebody else's label on it.
+   ===================================================================== */
+const SHAPES = {};
+for (const [id, factory] of Object.entries({
+  tall: createResinCultureJarModel, sleeve: createSleeveJarModel,
+})) {
+  const g = wrapGeom(id);
+  SHAPES[id] = { factory,
+                 wrap: { body:  { aspect: bandAspect(g, g.body) },
+                         skirt: { aspect: bandAspect(g, g.skirt) } } };
+}
+
+/* A public page must not get slower the more popular it becomes. Past this
+   many captured jars the rest of the page falls back to the tinted mould.
+   The number is the first four shelves' worth of thumbnails. */
+const ART_BUDGET = 12;
+let artSpent = 0;
+
+/** The bands for one listed jar, or null. Anon reads these through the
+ *  "listed jar art public read" policy, which joins to public_entries: the
+ *  set of jars readable here is exactly the set this page can already see. */
+async function loadPublicArt(entry) {
+  const parts = entry.art_parts || [];
+  if (!parts.length || artSpent >= ART_BUDGET) return null;
+  artSpent++;
+  const c = db();
+  const art = {};
+  await Promise.all(parts.map(async (part) => {
+    const { data, error } = await c.storage.from('jar-art')
+      .download(entry.id + '/' + part + '.jpg');
+    if (error || !data) { console.warn('[meltshelf] public art', part, error); return; }
+    const key = part === 'base' ? 'bottom' : part;
+    try { art[key] = await createImageBitmap(data); } catch (e) { /* skip */ }
+  }));
+  return Object.keys(art).length ? art : null;
+}
+
+/**
+ * A thumbnail is 640x360, so the label never needs to be large. Capped by the
+ * measured canvas limit as well, because a canvas over the cap does not fail:
+ * it draws nothing, and the jar comes out blank.
+ */
+const THUMB_TEX = Math.min(1536, maxCanvasWidth());
+
+/** One jar for a thumbnail. Returns {obj, dispose}. */
+async function jarFor(entry) {
+  // built-in artwork: one shared model for the whole page
+  if (entry.pack && built[entry.pack]) {
+    return { obj: built[entry.pack].clone(true), dispose: null };
+  }
+  const shape = SHAPES[entry.shape] || SHAPES.tall;
+  const art = await loadPublicArt(entry);
+  if (!art) {
+    // No artwork, so the mould. Cloned from a built-in and tinted, exactly as
+    // this page has always done.
+    return { obj: built['sour-diesel-bx2'].clone(true), dispose: null };
+  }
+  const tint = { color: entry.color_display, attenuation: entry.color_display,
+                 blockout: 0xcccccc };
+  const pack = makeTemplatePack({ ...CONFIG, name: entry.name, wrap: shape.wrap,
+                                  cap: { ...CONFIG.cap, knurl: false }, art });
+  const jar = shape.factory({
+    label: { ...pack,
+             // Only the faces actually held. A missing band must not fall
+             // through to the pack's drawn stand-in, which is authored for the
+             // tall jar's black plastic cap and paints a near-black plate over
+             // most of a squat one.
+             body:   art.body   ? pack.body   : null,
+             skirt:  art.skirt  ? pack.skirt  : null,
+             top:    art.top    ? pack.top    : null,
+             bottom: art.bottom ? pack.bottom : null,
+             contents: tint, lighting: LIGHTING.studio },
+    textureSize: THUMB_TEX,
+    anisotropy: renderer.capabilities.getMaxAnisotropy(),
+  });
+
+  /* Let the decoded bands go. A tall jar's body band is 4096 x 568, which is
+     9.3MB of RGBA once decoded, and the skirt another 6.6MB. They are pure
+     intermediates: the factory has already rasterized every face down to
+     THUMB_TEX by the time it returns, synchronously, so nothing else will ever
+     read them. Left alive, a page of twelve jars holds a couple of hundred
+     megabytes of bitmaps nobody can see.
+     Not done by asking createImageBitmap to resize on decode instead: older
+     Safari throws on the options form, and the try/catch around it would turn
+     that into a silently missing band. */
+  for (const b of Object.values(art)) b.close?.();
+
+  // Per-entry, so it has to go once its picture is taken. The built-ins are
+  // shared and must never be disposed.
+  return { obj: jar, dispose: () => jar.userData.sculptRuntime.dispose() };
+}
+
 const built = {};
 async function buildJars() {
   const logo = await createImageBitmap(
@@ -313,23 +442,27 @@ async function buildJars() {
   }
 }
 
-function thumbFor(keys, tints) {
+async function thumbFor(entries, tints) {
   const row = new THREE.Group();
-  // A shelf whose jars have no built-in artwork still gets a thumbnail: the
-  // mould, tinted. Better an honest grey jar than somebody else's label.
-  const list = keys.length ? keys : ['sour-diesel-bx2'];
-  list.forEach((k, i) => {
-    const j = (built[k] || built['sour-diesel-bx2']).clone(true);
-    j.position.set((i - (keys.length - 1) / 2) * 62, 0, 0);
-    j.rotation.y = (i * 0.9) % 1.4 - 0.3;
-    row.add(j);
-  });
+  const bin = [];
+  // A shelf with nothing drawable still gets a thumbnail: the mould, tinted.
+  // Better an honest grey jar than somebody else's label.
+  const list = (entries && entries.length)
+    ? entries : [{ pack: 'sour-diesel-bx2' }];
+  for (let i = 0; i < list.length; i++) {
+    const { obj, dispose } = await jarFor(list[i]);
+    obj.position.set((i - (list.length - 1) / 2) * 62, 0, 0);
+    obj.rotation.y = (i * 0.9) % 1.4 - 0.3;
+    row.add(obj);
+    if (dispose) bin.push(dispose);
+  }
   scene.add(row);
   camera.position.set(10, 46, 168);
   camera.lookAt(0, 19, 0);
   renderer.render(scene, camera);
   const url = renderer.domElement.toDataURL('image/jpeg', 0.86);
   scene.remove(row);
+  for (const d of bin) d();          // the picture is taken; let them go
   return url;
 }
 
@@ -363,7 +496,7 @@ function draw() {
     const tag = real ? 'a' : 'div';
     const attr = real ? ` href="${s.href}"` : '';
     return `<${tag} class="card ${real ? 'live' : 'eg'}"${attr}>
-      <span class="thumbslot" data-slot="${i}">
+      <span class="thumbslot" data-slot="${SHELVES.indexOf(s)}">
         <span class="ph">${(s.tints && s.tints.length ? s.tints : ['#2A2E34','#2A2E34','#2A2E34'])
           .slice(0, 3).map((c) => `<i style="--c:${String(c).replace(/[^#0-9a-fA-F]/g, '')}"></i>`).join('')}</span>
         ${s.thumb ? `<img class="in" src="${s.thumb}" alt="">` : ''}
@@ -436,15 +569,24 @@ draw();                       // cards on screen NOW, with colour placeholders
   await buildJars();
   const order = SHELVES.map((s, i) => [s, i]).sort((a, b) => (a[0].eg === b[0].eg ? 0 : a[0].eg ? 1 : -1));
   for (const [shelf, idx] of order) {
-    shelf.thumb = thumbFor(shelf.jars, shelf.tints);
-    const slot = document.querySelector(`[data-slot="${idx}"]`);
-    if (slot && !slot.querySelector('img')) {
-      const img = new Image();
-      img.className = 'shelfimg';
-      img.alt = '';
-      img.onload = () => img.classList.add('in');
-      img.src = shelf.thumb;
-      slot.appendChild(img);
+    // ONE BAD JAR COSTS ONE CARD. Without this the loop is a single
+    // for-of over an await: the first rejection ends it, and because real
+    // shelves are rendered before the examples, a throw on the first real
+    // shelf strands every remaining card on its colour placeholder with
+    // nothing on screen saying why.
+    try {
+      shelf.thumb = await thumbFor(shelf.jars, shelf.tints);
+      const slot = document.querySelector(`[data-slot="${idx}"]`);
+      if (slot && !slot.querySelector('img')) {
+        const img = new Image();
+        img.className = 'shelfimg';
+        img.alt = '';
+        img.onload = () => img.classList.add('in');
+        img.src = shelf.thumb;
+        slot.appendChild(img);
+      }
+    } catch (err) {
+      console.warn('[meltshelf] thumbnail failed', shelf.handle, err);
     }
     // Yield so a long list cannot lock the page up mid-scroll.
     await new Promise((r) => setTimeout(r, 0));
