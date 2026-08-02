@@ -201,5 +201,30 @@ export function createShelfFx({ THREE, scene, width = 560, x = -34, z = 66.5 }) 
     paintTrim();
   }
 
-  return { TRIM, SMOKE, trimColourAt, paintTrim, step, toJSON, fromJSON, strip, SPILL };
+  /**
+   * Re-cut the trim to a shelf that changed length.
+   *
+   * The plank is no longer a fixed 560: it is cut to however many jars are on
+   * it. A trim strip that stayed its original width would hang off the end of
+   * a short shelf and stop short of a long one, and the spill lights would
+   * light the wrong stretch of plank.
+   *
+   * The strip is one box and nine lights, so this rebuilds rather than
+   * scales: scaling a box scales its UVs with it, and the gradient would
+   * stretch instead of spanning.
+   */
+  function resize(newWidth, newX = x) {
+    if (!(newWidth > 0)) return;
+    width = newWidth; x = newX;
+    strip.geometry.dispose();
+    strip.geometry = new THREE.BoxGeometry(width, 2.4, 1.2);
+    strip.position.set(x, 1.7, z);
+    SPILL.forEach((l, i) => {
+      l.position.set(x - width / 2 + (i + 0.5) * (width / SPILL.length), 10, z - 8);
+    });
+    paintTrim();
+  }
+
+  return { TRIM, SMOKE, trimColourAt, paintTrim, step, toJSON, fromJSON,
+           strip, SPILL, resize };
 }

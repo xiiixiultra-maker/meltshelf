@@ -416,25 +416,93 @@ let ME = null;
 
 /** Lay the jars out inside their bay. Positions used to be literals because
  *  there were exactly four; with a real shelf the count is whatever it is. */
-const BAY_X = { rotation: -134, wishlist: 0, prototype: 100 };
+/* =====================================================================
+   A SHELF THE SIZE OF WHAT IS ON IT
+
+   Bays used to sit at fixed centres, 134 and 100 and 0, with each bay's jars
+   centred on its own seat. That works until a bay outgrows the gap to its
+   neighbour, which happens at five rotation jars: the centring is capped at
+   three while the positions are not, so the fifth jar is placed on top of the
+   wish list.
+
+   So nothing is a constant except the spacing between jars and between bays.
+   Bays are measured, laid out left to right, and the plank and the camera are
+   cut to the result.
+   ===================================================================== */
+const BAY_ORDER = ['rotation', 'wishlist', 'prototype'];
+const PITCH = 68;      // centre to centre between jars, 18mm of daylight
+const BAY_GAP = 104;   // between bays, wide enough for a divider and a cap
+const EDGE = 76;       // plank beyond the outermost jar
+
+let SHELF = { centres: {}, extent: 0, half: 0 };
 function layout(rows) {
   const byBay = {};
   for (const r of rows) (byBay[r.bay] ||= []).push(r);
+
+  // Only bays that hold something take up room. An empty wish list should not
+  // push the prototype bay off to the right of an otherwise short shelf.
+  const present = BAY_ORDER.filter((b) => byBay[b] && byBay[b].length);
+  const widthOf = (b) => (byBay[b].length - 1) * PITCH;
+  const total = present.reduce((a, b) => a + widthOf(b), 0)
+              + BAY_GAP * Math.max(0, present.length - 1);
+
   const out = [];
-  for (const [bay, list] of Object.entries(byBay)) {
-    const centre = BAY_X[bay] ?? 0;
-    const span = Math.min(list.length - 1, 3) * 68;
-    list.forEach((r, i) => {
-      out.push({ ...r, x: centre - span / 2 + i * 68 });
-    });
+  const centres = {};
+  let cursor = -total / 2;                       // the row straddles x = 0
+  for (const bay of present) {
+    const w = widthOf(bay);
+    byBay[bay].forEach((r, i) => out.push({ ...r, x: cursor + i * PITCH }));
+    centres[bay] = cursor + w / 2;
+    cursor += w + BAY_GAP;
   }
+
+  SHELF = { centres, extent: total, half: total / 2 };
   return out;
+}
+
+/** Cut the plank and frame the camera to whatever the row turned out to be. */
+function fitShelf() {
+  const halfWidth = SHELF.half + EDGE;
+  plank.geometry.dispose();
+  plank.geometry = new THREE.BoxGeometry(halfWidth * 2, 8, 130);
+  plank.position.set(0, -4, 0);
+
+  // Dividers go in the MIDDLE of each gap between adjacent bays, which is
+  // only knowable once the bays have been placed.
+  for (const d of dividers) { scene.remove(d); d.geometry.dispose(); }
+  dividers.length = 0;
+  const present = BAY_ORDER.filter((b) => SHELF.centres[b] !== undefined);
+  for (let i = 0; i < present.length - 1; i++) {
+    const a = SHELF.centres[present[i]], b = SHELF.centres[present[i + 1]];
+    const d = new THREE.Mesh(
+      new THREE.BoxGeometry(1.5, 46, 46),
+      new THREE.MeshStandardMaterial({ color: new THREE.Color('#1B1F25'), roughness: .8 }),
+    );
+    d.position.set((a + b) / 2, 23, 0);
+    d.receiveShadow = true; d.castShadow = true;
+    scene.add(d);
+    dividers.push(d);
+  }
+
+  // Pull back until the whole row fits across, with the jar's own radius and
+  // a margin included. Horizontal half-angle is the vertical fov scaled by
+  // the aspect, which is why a narrow window has to stand further off.
+  const need = halfWidth + 30;
+  const tanH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;
+  const dist = THREE.MathUtils.clamp(need / Math.max(0.2, tanH), 240, 1400);
+  camera.position.set(0, dist * 0.32 + 40, dist);
+  controls.target.set(0, 20, 0);
+  controls.minDistance = 90;
+  controls.maxDistance = dist * 2.2;
+  controls.update();
+  FX.resize?.(halfWidth * 2);
 }
 
 /** A database row, as the scene wants it. */
 function rowToItem(e) {
   return {
     id: e.id,
+    artParts: e.art_parts || [],     // which wrap bands are in storage
     key: e.spec?.pack ?? null,       // a built-in pack, when the jar has one
     name: e.name,
     strain: e.strain ?? '',
@@ -507,6 +575,9 @@ scene.add(plank);
 const FX = createShelfFx({ THREE, scene });
 const OPENER = createOpener();
 
+// Bay dividers are rebuilt by fitShelf once the bays have been placed, so
+// this starts empty rather than at fixed x positions.
+const dividers = [];
 // bay dividers
 for (const dx of [-52, 52]) {
   const d = new THREE.Mesh(
@@ -579,6 +650,34 @@ async function decodeImage(url) {
   return img;
 }
 
+/* =====================================================================
+   A JAR THAT CAME FROM A CAMERA
+
+   capture uploads the wrap to the jar-art bucket and records which bands
+   landed in art_parts. Reading it back is what was missing: this page knew
+   four built-in packs and fell through to the template for everything else,
+   which is why a captured jar arrived as the generic papaya one.
+
+   The bucket is private and the owner has select on their own rows, so a
+   plain download works here with no signed URL and no server.
+   ===================================================================== */
+async function loadStoredArt(item) {
+  const parts = item.artParts || [];
+  if (!parts.length) return null;
+  const c = db();
+  const art = {};
+  await Promise.all(parts.map(async (part) => {
+    const { data, error } = await c.storage.from('jar-art')
+      .download(item.id + '/' + part + '.jpg');
+    if (error || !data) { console.warn('[meltshelf] art missing', part, error); return; }
+    // The renderer wants body/skirt/top/bottom; storage calls the last one
+    // base, because "bottom" reads as a position and "base" as a surface.
+    const key = part === 'base' ? 'bottom' : part;
+    art[key] = await createImageBitmap(data);
+  }));
+  return Object.keys(art).length ? art : null;
+}
+
 async function build() {
   // Charras needs its logo decoded before the label can bake
   const logo = await decodeImage('./assets/charras-logo.png');
@@ -590,7 +689,15 @@ async function build() {
     // colour, which is the part we actually have. Inventing a label would be
     // showing somebody a jar they never owned.
     const tint = { color: item.display, attenuation: item.display, blockout: 0xcccccc };
-    const label = item.key === 'charras'
+
+    // A jar photographed by its owner wears its own wrap, and no grip ribs:
+    // real jars are smooth black glass.
+    const stored = await loadStoredArt(item);
+    const label = stored
+      ? { ...makeTemplatePack({ ...CONFIG, name: item.name,
+                                cap: { ...CONFIG.cap, knurl: false }, art: stored }),
+          contents: tint, lighting: LIGHTING.studio }
+      : item.key === 'charras'
       ? { ...makeCharrasPack({ logo }), contents: CONTENTS.warmBlonde, lighting: LIGHTING.studio }
       : item.key === 'charras-neon'
       // same mould, same emboss, different paint: neon plate, orange logo
@@ -628,6 +735,10 @@ async function build() {
   const xs = jars.map((j) => j.position.x);
   for (const j of jars) prepareJar(j, xs);
 }
+
+// Re-fit on resize: the camera distance depends on the viewport aspect, so a
+// narrow window has to stand further back to hold the same row.
+addEventListener('resize', () => { if (jars.length) fitShelf(); });
 
 /* ------------------------------------------------------- bay captions */
 const bayEls = {};
@@ -1015,7 +1126,7 @@ async function boot() {
 
   const { data, error } = await db()
     .from('entries')
-    .select('id, name, strain, brand, bay, provenance, color_captured, color_display, notes, spec, listed')
+    .select('id, name, strain, brand, bay, provenance, color_captured, color_display, notes, spec, listed, art_parts')
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -1029,6 +1140,11 @@ async function boot() {
      still a shelf, and the panel says exactly what to do about it. */
   if (EMPTY) q('emptyPanel').hidden = false;
   else await build();
+
+  // The plank, the dividers and the camera are all cut from the row that just
+  // got built, so this runs once the jars exist and not before. An empty
+  // shelf keeps the default plank: there is nothing to measure.
+  if (!EMPTY) fitShelf();
 
   applyTier();
   document.getElementById('load').classList.add('gone');
