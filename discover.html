@@ -470,11 +470,38 @@ async function thumbFor(entries, tints) {
 const grid = document.getElementById('grid');
 const active = new Set();
 
+/**
+ * Make a string safe to place inside markup.
+ *
+ * EVERYTHING on this page that came from a person goes through this. The
+ * process field is sixty characters of free text typed on the capture form,
+ * carried verbatim through entries.spec into public_shelves.processes, and it
+ * used to be interpolated straight into innerHTML here. That is a stored XSS
+ * with a signed-out stranger as the target, fired by any approved member.
+ *
+ * Escaping, not filtering. There is no list of allowed tags and no attempt to
+ * judge whether markup looks harmful, because both are how sanitisers get
+ * bypassed. The five characters that can change the meaning of markup are
+ * replaced with their entities and nothing else is touched, so a jar process
+ * genuinely called "rosin <60u" displays exactly that.
+ *
+ * The quote forms matter: these values also land inside a data- attribute.
+ */
+const esc = (v) => String(v ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 /** One chip per process that actually exists across the real shelves. */
 function paintFilters() {
   const seen = [...new Set(SHELVES.flatMap((s) => s.processes))].sort();
   document.getElementById('procChips').innerHTML = seen
-    .map((p) => `<button class="chip" data-f="${p.replace(/"/g, '&quot;')}">${p}</button>`)
+    // Both the attribute AND the label. The old version escaped quotes in the
+    // attribute only, which stopped an attribute break and did nothing at all
+    // about the label, where a tag needs no quotes to open.
+    .map((p) => `<button class="chip" data-f="${esc(p)}">${esc(p)}</button>`)
     .join('');
   wireChips();
 }
@@ -502,12 +529,12 @@ function draw() {
         ${s.thumb ? `<img class="in" src="${s.thumb}" alt="">` : ''}
       </span>
       <div class="meta">
-        <div class="who"><span class="handle">${s.handle}</span><span class="n">${plural(s.n, 'jar')}</span></div>
-        <div class="title">${s.title}</div>
+        <div class="who"><span class="handle">${esc(s.handle)}</span><span class="n">${plural(s.n, 'jar')}</span></div>
+        <div class="title">${esc(s.title)}</div>
         <div class="tags">
           ${real ? '' : '<span class="tag eg">Example</span>'}
           ${s.inhand === s.n ? '<span class="tag p">All in hand</span>' : ''}
-          ${s.processes.map((t) => `<span class="tag">${t}</span>`).join('')}
+          ${s.processes.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}
         </div>
         <div class="bar">
           <i class="hand" style="width:${pct}%"></i><i class="up" style="width:${100 - pct}%"></i>
