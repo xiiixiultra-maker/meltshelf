@@ -768,7 +768,12 @@ function show(it) {
   // `pack` is plumbing, not a fact about the hash: it names which artwork to
   // draw. Showing it in a spec table would be showing somebody a database
   // column and calling it provenance.
-  const rows = Object.entries(spec).filter(([k]) => k !== 'pack');
+  // Only the flat facts. spec also carries `sample`, the colour measurement,
+  // and `detail`, the whole aroma and flavour taxonomy: both are objects and
+  // both would render as [object Object] in a two-column table. They have
+  // their own places to live, and this is not one of them.
+  const rows = Object.entries(spec)
+    .filter(([k, v]) => k !== 'pack' && (typeof v === 'string' || typeof v === 'number'));
   $('c-spec').innerHTML = rows.length
     ? rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')
     : '<tr><td>not recorded</td><td>&middot;</td></tr>';

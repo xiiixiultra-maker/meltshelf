@@ -394,6 +394,19 @@ td b{font-weight:500;color:var(--l1)}
     </div>
   </fieldset>
 
+  <fieldset><legend>What is it</legend>
+    <div class="row2"><label>Name</label>
+      <input id="e-name" type="text" maxlength="80" placeholder="Sour Diesel BX2"></div>
+    <div class="row2"><label>Strain</label>
+      <input id="e-strain" type="text" maxlength="120" placeholder="Gary Payton x Rainbow Guava"></div>
+    <div class="row2"><label>Brand</label>
+      <input id="e-brand" type="text" maxlength="80" placeholder="Resin Culture"></div>
+    <div class="row2"><label>Process</label>
+      <input id="e-process" type="text" maxlength="60" placeholder="Cold cure live rosin"></div>
+    <p class="hint" style="margin-top:2px">Only the name is required. It is what
+       the jar is called on your shelf.</p>
+  </fieldset>
+
   <fieldset id="sess"><legend>Session</legend>
     <ol id="steps">
       <li data-s="outside" class="on">Outside <b id="oCount">0/4</b></li>
@@ -463,7 +476,7 @@ td b{font-weight:500;color:var(--l1)}
     </div>
     <p id="dsum" class="count" style="margin-top:4px"></p>
     <div class="row" style="margin-top:6px">
-      <button id="save" class="primary">Log entry</button>
+      <button id="save" class="primary">Save to my shelf</button>
     </div>
     <div id="out"></div>
   </fieldset>
@@ -531,6 +544,7 @@ td b{font-weight:500;color:var(--l1)}
   </div>
 </div>
 
+<script src="./vendor/supabase/supabase.umd.js"></script>
 <script type="importmap">
 { "imports": {
   "three": "./vendor/three/three.module.js",
@@ -547,6 +561,7 @@ import { createSleeveJarModel, SLEEVE_DIM } from './src/createSleeveJarModel.js'
 import { makeTemplatePack, CONFIG } from './src/labelArtTemplate.js';
 import { AROMA, FLAVOUR, TERROIR, EXPERIENCE, ALL_AROMA } from './src/taxonomy.js';
 import { stitchWrap, splitJarWrap, FULL_ASPECT, TURNS } from './src/stitchWrap.js';
+import { db, profile, configured, SETUP_HELP } from './src/auth.js';
 import { WRAP } from './src/labelArtTemplate.js';
 import { converter, formatHex, differenceEuclidean } from 'culori';
 
@@ -1605,7 +1620,10 @@ $('generate').addEventListener('click', async () => {
     // A full-jar wrap is cut at the seam so the label splits when the lid
     // turns. The artwork route supplies a flat label, which is the body band
     // already, so it is not cut.
+    // Kept on CAP so save uploads these exact canvases: what is stored is
+    // then what was rendered, not a second stitch that might differ.
     const bands = CAP.route === 'photo' ? splitJarWrap(CAP.wrap) : null;
+    CAP.bands = bands;
     const skirt = bands ? await createImageBitmap(bands.skirt) : null;
     const bodyArt = bands ? await createImageBitmap(bands.body) : art;
     paintJar(S.colour.captured, bodyArt, base, cap, skirt);
@@ -1662,27 +1680,119 @@ function showResult() {
 /* =====================================================================
    LOG  — the payload an entry would be written from
    ===================================================================== */
-$('save').addEventListener('click', () => {
+/** A canvas as a JPEG blob. */
+function toBlob(canvas, quality = 0.9) {
+  return new Promise((res) => canvas.toBlob(res, 'image/jpeg', quality));
+}
+
+/** Which enum value describes how this label was obtained. */
+function labelSource() {
+  if (CAP.route !== 'artwork') return 'photographed';
+  return CAP.art.src === 'peeled' ? 'peeled' : 'artwork';
+}
+
+const escText = (v) => String(v ?? '').replace(/[<>&]/g, '');
+
+$('save').addEventListener('click', async () => {
+  const btn = $('save');
   if (!S.colour) { out.textContent = 'Nothing sampled yet.'; return; }
-  const payload = {
-    provenance: S.provenance,
-    color_captured: S.colour.captured,
-    color_display: S.colour.captured,     // equal until someone edits it
-    oklch: { L: +S.colour.L.toFixed(4), C: +S.colour.C.toFixed(4), h: +S.colour.h.toFixed(1) },
-    wb_normalised: S.colour.wb,
-    sample_px: S.colour.n,
-    clipped_px: S.colour.clipped,
-    aroma: [...D.aroma, ...D.custom],
-    flavour: { ...D.flavour, mouthfeel: [...D.mouthfeel], structure: [...D.structure],
-               retrohale: [...D.retrohale], length: D.length, intensity: D.intensity },
-    terroir: { ...D.terroir, handling: [...D.terroir.handling] },
-    experience: { ...D.experience, effect: [...D.experience.effect],
-                  bestFor: [...D.experience.bestFor] },
-    notes: D.notes,
-  };
-  console.log('entry payload', payload);
-  out.innerHTML = 'Not wired to a database yet. Payload logged to the console:<br>'
-    + `<span style="color:var(--green)">${JSON.stringify(payload)}</span>`;
+  if (!configured()) { out.textContent = SETUP_HELP; return; }
+
+  const name = ($('e-name').value || '').trim();
+  if (!name) { out.textContent = 'Give the jar a name first.'; $('e-name').focus(); return; }
+
+  btn.disabled = true;
+  out.textContent = 'Saving.';
+  try {
+    const c = db();
+    const me = await profile();
+    if (!me) {
+      out.innerHTML = 'Not signed in. <a href="./login.html" style="color:var(--green)">Sign in</a> and try again.';
+      return;
+    }
+    if (!me.approved) {
+      out.textContent = 'This account is not approved yet, so it cannot save jars.';
+      return;
+    }
+
+    // ---- 1. the row, so the storage policies have something to join to ----
+    const spec = {};
+    const proc = ($('e-process').value || '').trim();
+    if (proc) spec.process = proc;
+    spec.sample = { L: +S.colour.L.toFixed(4), C: +S.colour.C.toFixed(4),
+                    h: +S.colour.h.toFixed(1), px: S.colour.n, clipped: S.colour.clipped };
+    const detail = {
+      aroma: [...D.aroma, ...D.custom],
+      flavour: { ...D.flavour, mouthfeel: [...D.mouthfeel], structure: [...D.structure],
+                 retrohale: [...D.retrohale], length: D.length, intensity: D.intensity },
+      terroir: { ...D.terroir, handling: [...D.terroir.handling] },
+      experience: { ...D.experience, effect: [...D.experience.effect],
+                    bestFor: [...D.experience.bestFor] },
+    };
+    spec.detail = detail;
+
+    const { data: row, error: insErr } = await c.from('entries').insert({
+      user_id: me.id,
+      name,
+      strain: ($('e-strain').value || '').trim() || null,
+      brand:  ($('e-brand').value  || '').trim() || null,
+      bay: 'rotation',
+      provenance: S.provenance,
+      label_src: labelSource(),
+      color_captured: S.colour.captured,
+      color_display:  S.colour.captured,   // equal until somebody edits it
+      wb_normalised: !!S.colour.wb,
+      captured_at: new Date().toISOString(),
+      notes: D.notes || null,
+      spec,
+      // NEVER listed from here. Publishing is a decision made on the shelf,
+      // beside the sentence explaining what it means, not a side effect of
+      // pressing save on the screen where the jar was built.
+      listed: false,
+    }).select('id').single();
+    if (insErr) throw insErr;
+
+    // ---- 2. the artwork, keyed by entry id ----
+    out.textContent = 'Saved. Storing the artwork.';
+    const uploads = [
+      ['body',  CAP.bands ? CAP.bands.body  : CAP.wrap],
+      ['skirt', CAP.bands ? CAP.bands.skirt : null],
+      ['top',   CAP.top],
+      ['base',  CAP.bottom],
+    ];
+    const parts = [];
+    for (const [part, canvas] of uploads) {
+      if (!canvas) continue;
+      const blob = await toBlob(canvas);
+      if (!blob) continue;
+      const { error: upErr } = await c.storage.from('jar-art')
+        .upload(row.id + '/' + part + '.jpg', blob,
+                { contentType: 'image/jpeg', upsert: true });
+      if (upErr) { console.warn('[meltshelf] upload failed', part, upErr); continue; }
+      parts.push(part);
+    }
+
+    // ---- 3. record what actually landed ----
+    // Which bands exist varies by route, and a renderer that has to probe
+    // storage to find out makes a 404 per missing band on every page load.
+    if (parts.length) {
+      const { error: updErr } = await c.from('entries')
+        .update({ art_parts: parts }).eq('id', row.id);
+      if (updErr) console.warn('[meltshelf] art_parts not recorded', updErr);
+    }
+
+    out.innerHTML = 'Saved to your shelf as <b style="color:var(--green)">'
+      + escText(name) + '</b>. '
+      + (parts.length ? 'Artwork stored (' + parts.join(', ') + '). '
+                      : 'No artwork stored. ')
+      + 'It is private until you list it. '
+      + '<a href="./app.html" style="color:var(--green)">Open your shelf</a>';
+  } catch (err) {
+    console.error('[meltshelf] save failed', err);
+    out.textContent = 'Could not save: ' + (err.message || err);
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 // no camera on this machine, so land in a usable state rather than an empty one
