@@ -336,6 +336,7 @@ body.free #fxLocked{display:block}
     <tr><td>captured</td><td id="c-cap">&middot;</td></tr>
     <tr><td>displayed</td><td id="c-disp">&middot;</td></tr>
     <tr><td>edit</td><td id="c-edit">&middot;</td></tr>
+    <tr><td>artwork</td><td id="c-art">&middot;</td></tr>
   </table>
   <p class="note" id="c-note"></p>
 
@@ -390,7 +391,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createResinCultureJarModel, createJarLights, CONTENTS, LIGHTING, DIM }
   from './src/createJarModel.js';
 import { createSleeveJarModel } from './src/createSleeveJarModel.js';
-import { wrapGeom, bandAspect } from './src/stitchWrap.js';
+import { wrapGeom, bandAspect, maxCanvasWidth } from './src/stitchWrap.js';
 import { makeCharrasPack } from './src/labelArtCharras.js';
 import { makeTemplatePack, CONFIG } from './src/labelArtTemplate.js';
 import { converter, differenceEuclidean } from 'culori';
@@ -670,19 +671,57 @@ async function decodeImage(url) {
    ===================================================================== */
 async function loadStoredArt(item) {
   const parts = item.artParts || [];
-  if (!parts.length) return null;
+  if (!parts.length) { item.artNote = 'none stored'; return null; }
   const c = db();
   const art = {};
+  const failed = [];
   await Promise.all(parts.map(async (part) => {
     const { data, error } = await c.storage.from('jar-art')
       .download(item.id + '/' + part + '.jpg');
-    if (error || !data) { console.warn('[meltshelf] art missing', part, error); return; }
+    if (error || !data) {
+      failed.push(part + ': ' + (error && error.message ? error.message : 'not found'));
+      return;
+    }
     // The renderer wants body/skirt/top/bottom; storage calls the last one
     // base, because "bottom" reads as a position and "base" as a surface.
     const key = part === 'base' ? 'bottom' : part;
-    art[key] = await createImageBitmap(data);
+    try {
+      art[key] = await createImageBitmap(data);
+    } catch (e) {
+      failed.push(part + ': would not decode');
+    }
   }));
-  return Object.keys(art).length ? art : null;
+  const got = Object.keys(art);
+  // The reason travels WITH the jar. A console.warn is invisible to somebody
+  // holding a phone, and a jar that quietly falls back to the template looks
+  // exactly like a jar that was never captured.
+  item.artNote = got.length
+    ? got.join(', ') + (failed.length ? '  (missing ' + failed.join('; ') + ')' : '')
+    : 'stored but none arrived: ' + failed.join('; ');
+  if (failed.length) console.warn('[meltshelf] artwork', item.name, failed);
+  return got.length ? art : null;
+}
+
+/**
+ * How wide to build this jar's label, in pixels.
+ *
+ * Capped by the device, not by arithmetic. The rule used to be
+ * `300 * bodyAspect`, which is 2162 for the tall jar and 6443 for the squat
+ * one, whose body band is a 21.5:1 sliver. 6443 asks for pixels capture never
+ * stored, and it is over the 4096-a-side canvas cap that several mobile
+ * browsers enforce by handing back a canvas that draws NOTHING rather than by
+ * failing. That is a blank label on a phone and a perfect one on a desktop.
+ */
+function texWidthFor(stored, shape) {
+  const glMax = renderer.capabilities.maxTextureSize || 4096;
+  // MEASURED, not assumed. 4096 is mobile Safari's cap but some Android
+  // WebViews stop at 2048, and a literal here would reproduce this same bug
+  // one device tier down.
+  const canvasMax = maxCanvasWidth();
+  const source = stored && stored.body && stored.body.width
+    ? stored.body.width                 // never upscale past what was stored
+    : Math.round(300 * shape.bodyAspect);
+  return Math.max(512, Math.min(source, glMax, canvasMax));
 }
 
 /**
@@ -725,9 +764,21 @@ async function build() {
     const shape = SHAPES[item.spec?.shape] ?? SHAPES.tall;
     const stored = await loadStoredArt(item);
     const label = stored
-      ? { ...makeTemplatePack({ ...CONFIG, name: item.name, wrap: shape.wrap,
-                                cap: { ...CONFIG.cap, knurl: false }, art: stored }),
-          contents: tint, lighting: LIGHTING.studio }
+      ? (() => {
+          const pack = makeTemplatePack({ ...CONFIG, name: item.name, wrap: shape.wrap,
+                                          cap: { ...CONFIG.cap, knurl: false }, art: stored });
+          // ONLY the faces we actually hold. A face the owner never captured
+          // must arrive as null rather than as the pack's drawn stand-in: the
+          // stand-in is authored for the tall jar's black plastic cap, and on
+          // the squat jar that paints a near-black plate over the 63% of the
+          // surface the cap occupies, which reads as no label at all.
+          return { ...pack,
+                   body:   stored.body   ? pack.body   : null,
+                   skirt:  stored.skirt  ? pack.skirt  : null,
+                   top:    stored.top    ? pack.top    : null,
+                   bottom: stored.bottom ? pack.bottom : null,
+                   contents: tint, lighting: LIGHTING.studio };
+        })()
       : item.key === 'charras'
       ? { ...makeCharrasPack({ logo }), contents: CONTENTS.warmBlonde, lighting: LIGHTING.studio }
       : item.key === 'charras-neon'
@@ -738,7 +789,9 @@ async function build() {
           contents: CONTENTS.warmBlonde, lighting: LIGHTING.studio }
       : (item.key === 'sour-diesel-bx2' || item.key === 'rodman')
       ? item.key
-      : { ...makeTemplatePack({ ...CONFIG, name: item.name }),
+      // The drawn stand-in, cut for the jar it is going on rather than always
+      // for the tall one.
+      : { ...makeTemplatePack({ ...CONFIG, name: item.name, wrap: shape.wrap }),
           contents: tint, lighting: LIGHTING.studio };
 
     /* WHICH JAR. The shelf used to build the Resin Culture jar for every row,
@@ -748,11 +801,7 @@ async function build() {
        than to nothing. */
     const jar = shape.factory({
       label,
-      // textureSize is the wrap WIDTH, so this asks for about 300px of
-      // vertical resolution on the body band of WHICHEVER jar this is: the
-      // two shapes have very different band aspects and a constant here gave
-      // the squat jar's short band four times the pixels it can show.
-      textureSize: Math.round(300 * shape.bodyAspect),
+      textureSize: texWidthFor(stored, shape),
       anisotropy: renderer.capabilities.getMaxAnisotropy(),
     });
     jar.position.set(item.x, 0, 0);
@@ -898,6 +947,11 @@ function show(it) {
   }
 
   $('c-shelf').textContent = BAYS[it.bay].label;
+  // Blank is a state with a cause, and the cause belongs on the screen.
+  const artCell = $('c-art');
+  artCell.textContent = it.artNote || 'none stored';
+  artCell.style.color = (it.artNote && it.artNote.startsWith('stored but none'))
+    ? 'var(--pink, #FF4D8D)' : '';
   $('c-col').innerHTML = `<span class="chipSw" style="background:${it.display}"></span>${it.display}`;
   $('c-cap').textContent = it.captured ?? 'n/a';
   $('c-disp').textContent = it.display;

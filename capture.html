@@ -560,8 +560,8 @@ import { createResinCultureJarModel, createJarLights, LIGHTING } from './src/cre
 import { createSleeveJarModel, SLEEVE_DIM } from './src/createSleeveJarModel.js';
 import { makeTemplatePack, CONFIG } from './src/labelArtTemplate.js';
 import { AROMA, FLAVOUR, TERROIR, EXPERIENCE, ALL_AROMA } from './src/taxonomy.js';
-import { stitchWrap, splitJarWrap, fullAspect, wrapGeom, bandAspect, TURNS }
-  from './src/stitchWrap.js';
+import { stitchWrap, splitJarWrap, splitPrintedWrap, fullAspect, printedAspect,
+         wrapGeom, bandAspect, maxCanvasWidth, TURNS } from './src/stitchWrap.js';
 import { db, profile, configured, SETUP_HELP } from './src/auth.js';
 import { WRAP } from './src/labelArtTemplate.js';
 import { converter, formatHex, differenceEuclidean } from 'culori';
@@ -942,7 +942,16 @@ function coverage(n) {
 
 /* The wrap the jar factory wants, so every path can be measured against one
    number instead of guessing. */
-const TARGET = { w: 4096, h: Math.round(4096 / WRAP.body.aspect) };
+/**
+ * How wide the wrap is built, capped by what this device will actually make.
+ *
+ * 4096 is the width capture has always wanted, and it is also the exact cap
+ * several mobile browsers put on a canvas side. Over the cap they do not
+ * throw: they return a canvas that draws nothing. Sitting ON the line is not
+ * a plan, so the number is asked for rather than assumed.
+ */
+const MAX_CANVAS = Math.min(4096, maxCanvasWidth());
+const TARGET = { w: MAX_CANVAS, h: Math.round(MAX_CANVAS / WRAP.body.aspect) };
 
 /**
  * Enlarge an image toward a target width in halving steps.
@@ -979,19 +988,27 @@ function upscaleTo(img, targetW) {
  * the way round, so the rest of the wrap is the jar's own surface colour and
  * the label sits on it at the chosen width.
  */
-function composeWrapFromLabel(img, { mode, w, y }) {
-  const out = mkc(TARGET.w, TARGET.h);
+/**
+ * @param {object} o
+ * @param {string} [o.shape]  which jar this label is FOR. The composed height
+ *        follows it: a flat label is the printed band, and the printed band is
+ *        a different proportion on each jar.
+ */
+function composeWrapFromLabel(img, { mode, w, y, shape }) {
+  const TH = Math.max(8, Math.round(TARGET.w / printedAspect(shape || CAP.shape)));
+  const TARGET_H = TH;
+  const out = mkc(TARGET.w, TARGET_H);
   const g = out.getContext('2d');
   g.imageSmoothingQuality = 'high';
   const srcA = img.width / img.height;
 
   if (mode === 'full') {
     // cover: fill the wrap, crop whichever axis is long
-    const wrapA = TARGET.w / TARGET.h;
+    const wrapA = TARGET.w / TARGET_H;
     let dw = TARGET.w, dh = TARGET.w / srcA;
-    if (srcA > wrapA) { dh = TARGET.h; dw = TARGET.h * srcA; }
+    if (srcA > wrapA) { dh = TARGET_H; dw = TARGET_H * srcA; }
     const dx = (TARGET.w - dw) / 2;
-    const dy = (TARGET.h - dh) * y;
+    const dy = (TARGET_H - dh) * y;
     g.drawImage(img, dx, dy, dw, dh);
     // The wrap is a loop: whatever hangs off one edge belongs at the other,
     // or the join between the last column and the first is a hard cut.
@@ -1004,14 +1021,14 @@ function composeWrapFromLabel(img, { mode, w, y }) {
 
   // card: ground first, then the sticker
   g.fillStyle = CONFIG.ground.color;
-  g.fillRect(0, 0, TARGET.w, TARGET.h);
+  g.fillRect(0, 0, TARGET.w, TARGET_H);
   const cw = TARGET.w * w;
-  const ch = Math.min(TARGET.h * 0.94, cw / srcA);
+  const ch = Math.min(TARGET_H * 0.94, cw / srcA);
   const cx = (TARGET.w - cw) / 2;
-  const cy = (TARGET.h - ch) * y;
+  const cy = (TARGET_H - ch) * y;
   g.save();
-  g.shadowColor = 'rgba(0,0,0,.5)'; g.shadowBlur = TARGET.h * 0.03;
-  g.shadowOffsetY = TARGET.h * 0.006;
+  g.shadowColor = 'rgba(0,0,0,.5)'; g.shadowBlur = TARGET_H * 0.03;
+  g.shadowOffsetY = TARGET_H * 0.006;
   g.drawImage(img, cx, cy, cw, ch);
   g.restore();
   return out;
@@ -1397,10 +1414,10 @@ function describeArt(img) {
 }
 function paintArt() {
   if (!CAP.art.img) return;
-  const wrap = composeWrapFromLabel(CAP.art.img, CAP.art);
+  const wrap = composeWrapFromLabel(CAP.art.img, { ...CAP.art, shape: CAP.shape });
   const c = $('artPrev');
   c.width = c.clientWidth || 320;
-  c.height = Math.round(c.width / WRAP.body.aspect);
+  c.height = Math.round(c.width / printedAspect(CAP.shape));
   c.getContext('2d').drawImage(wrap, 0, 0, c.width, c.height);
 }
 $('artPick').addEventListener('click', () => {
@@ -1615,6 +1632,33 @@ function paintJar(hexColour, art, base, capTop, skirt) {
  *
  * Returns false when there is not enough to build from.
  */
+/**
+ * Does this wrap actually have a label in it?
+ *
+ * A canvas the browser refused to allocate encodes to a valid, uniform JPEG,
+ * so nothing downstream can tell it apart from a photograph of a plain jar.
+ * The difference is RANGE: real artwork has dark and light in it. This is a
+ * deliberately loose test. It is not judging the picture, only answering
+ * whether anything was drawn at all.
+ */
+function wrapHasContent(cv) {
+  const w = Math.min(cv.width, 256), h = Math.max(1, Math.min(cv.height, 256));
+  const s = Object.assign(document.createElement('canvas'), { width: w, height: h });
+  const g = s.getContext('2d', { willReadFrequently: true });
+  g.drawImage(cv, 0, 0, w, h);
+  const d = g.getImageData(0, 0, w, h).data;
+  let min = 255, max = 0, opaque = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const l = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+    if (l < min) min = l;
+    if (l > max) max = l;
+    if (d[i + 3] > 8) opaque++;
+  }
+  return { ok: opaque > (d.length / 4) * 0.5 && (max - min) > 12,
+           spread: Math.round(max - min),
+           opaque: Math.round(100 * opaque / (d.length / 4)) };
+}
+
 function buildWrap() {
   if (CAP.route === 'artwork') {
     if (!CAP.art.img) return false;
@@ -1623,8 +1667,11 @@ function buildWrap() {
     // well, and soften edges that were never soft.
     const big = upscaleTo(CAP.art.img,
       Math.round(TARGET.w * (CAP.art.mode === 'card' ? CAP.art.w : 1)));
-    CAP.wrap = composeWrapFromLabel(big, CAP.art);
-    CAP.bands = null;                 // a flat label IS the body band already
+    CAP.wrap = composeWrapFromLabel(big, { ...CAP.art, shape: CAP.shape });
+    // A flat label is the WHOLE print and it spans the seam, which is why
+    // peeling it tears it. Cut it there, so the cap wears its own share of the
+    // artwork instead of falling through to the template's black plate.
+    CAP.bands = splitPrintedWrap(CAP.wrap, CAP.shape);
   } else {
     if (CAP.outside.length < CAP.min) return false;
     // stitchWrap divides the circumference by however many shots it is given,
@@ -1639,7 +1686,18 @@ function buildWrap() {
       { width: TARGET.w, aspect: fullAspect(CAP.shape) });
     CAP.bands = splitJarWrap(CAP.wrap, CAP.shape);
   }
-  return !!CAP.wrap;
+  if (!CAP.wrap) return false;
+  // Refuse a wrap with nothing in it. Storing one is the worst outcome
+  // available here: it reports success and then cannot be explained.
+  const chk = wrapHasContent(CAP.wrap);
+  if (!chk.ok) {
+    console.warn('[meltshelf] wrap came out blank', chk, CAP.wrap.width, CAP.wrap.height);
+    CAP.wrapBlank = chk;
+    CAP.wrap = null; CAP.bands = null;
+    return false;
+  }
+  CAP.wrapBlank = null;
+  return true;
 }
 
 $('generate').addEventListener('click', async () => {
@@ -1739,7 +1797,11 @@ $('save').addEventListener('click', async () => {
   // Build the wrap now if generate was never pressed. Uploading nothing and
   // reporting success is how a jar ended up in the database with no face.
   if (!CAP.wrap && !buildWrap()) {
-    out.textContent = CAP.route === 'artwork'
+    out.textContent = CAP.wrapBlank
+      ? 'The wrap came out blank on this device, so there is nothing to store. '
+        + 'This is usually the browser refusing a canvas ' + TARGET.w
+        + ' pixels wide. Try again in another browser, or on a desktop.'
+      : CAP.route === 'artwork'
       ? 'No label loaded yet, so there is nothing to put on the jar.'
       : 'Not enough outside shots yet: ' + CAP.outside.length + ' of ' + CAP.min + '.';
     return;

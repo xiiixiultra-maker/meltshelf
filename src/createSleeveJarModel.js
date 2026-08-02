@@ -550,26 +550,36 @@ export function createSleeveJarModel(options = {}) {
     return m;
   }
 
+  /* A BAND WITH NO ARTWORK IS NOT DRAWN.
+   *
+   * Not a black one. The caller passes null for a face it has no artwork for,
+   * and the mesh is skipped, leaving bare glass or bare wood, which is what
+   * that part of a real jar looks like when the print does not reach it.
+   *
+   * The alternative, and what this did until it was caught, is to hand the
+   * missing face to the pack's own DRAWN art. That art is authored for the
+   * tall jar, whose cap is black plastic, so C.cap.color is #101215. On this
+   * jar the cap band is 63% of everything you can see, and a near-black plate
+   * across two thirds of it reads exactly like a jar with no label at all.
+   * Which is precisely the report that sent us looking. */
+  function addBand(name, parent, y0, y1, face, seed) {
+    if (!face) return null;
+    const m = new THREE.Mesh(sleeveRing(D, y0, y1, 0, 1, name === 'sleeve-upper'),
+                             bandMaterial(face, y1 - y0, seed));
+    m.name = name;
+    m.castShadow = m.receiveShadow = true;
+    parent.add(m);
+    meshes[name] = m;
+    return m;
+  }
+
   // The band on the glass. Its whole texture is its own band, so v runs 0..1.
-  const glassBand = new THREE.Mesh(
-    sleeveRing(D, B.glass.lo, B.glass.hi, 0, 1, false),
-    bandMaterial(label.body, B.glass.hi - B.glass.lo, 0x9A17),
-  );
-  glassBand.name = 'sleeve-lower';
-  glassBand.castShadow = glassBand.receiveShadow = true;
-  jarBody.add(glassBand);
-  meshes['sleeve-lower'] = glassBand;
+  addBand('sleeve-lower', jarBody, B.glass.lo, B.glass.hi, label.body, 0x9A17);
 
   // The band on the cap, in the LID's frame so it travels with it. Heights are
   // the same millimetres measured from the seam instead of from the heel.
-  const capBand = new THREE.Mesh(
-    sleeveRing(D, B.cap.lo - D.Y_SEAM, B.cap.hi - D.Y_SEAM, 0, 1, true),
-    bandMaterial(label.skirt ?? label.body, B.cap.hi - B.cap.lo, 0x51CE),
-  );
-  capBand.name = 'sleeve-upper';
-  capBand.castShadow = capBand.receiveShadow = true;
-  lid.add(capBand);
-  meshes['sleeve-upper'] = capBand;
+  addBand('sleeve-upper', lid, B.cap.lo - D.Y_SEAM, B.cap.hi - D.Y_SEAM,
+          label.skirt, 0x51CE);
 
   /* ------------------------------------------------------- the contents */
   const tint = label.contents ?? CONTENTS.warmBlonde;

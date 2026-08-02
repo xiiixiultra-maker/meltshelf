@@ -55,6 +55,42 @@ const GAIN_LIMIT = { lo: 0.82, hi: 1.24 };
 const mk = (w, h) => Object.assign(document.createElement('canvas'), { width: w, height: h });
 
 /**
+ * The widest canvas this browser will actually give you.
+ *
+ * WHY THIS IS MEASURED AND NOT ASSUMED
+ * A wrap is a very wide, very short canvas by nature, so it runs straight into
+ * a limit most code never meets. Mobile Safari caps a 2D canvas at 4096 on a
+ * side, some Android WebViews at 2048, desktops at 16384 or more.
+ *
+ * The dangerous part is HOW they refuse. Over the cap there is no exception
+ * and no null: you get back a canvas that reports the width you asked for and
+ * silently drops every draw into it. It then encodes to a perfectly valid,
+ * perfectly empty JPEG. Nothing downstream can tell it apart from a
+ * photograph of a blank jar, which is exactly how a shelf ended up rendering
+ * a captured jar with no label while the capture screen showed it fine.
+ *
+ * So ask. Draw an opaque pixel at the far end and read it back: an over-cap
+ * canvas hands back transparent. Probed once and remembered, because the
+ * answer cannot change for the life of the page.
+ */
+let _maxCanvas = null;
+export function maxCanvasWidth() {
+  if (_maxCanvas !== null) return _maxCanvas;
+  for (const w of [16384, 8192, 4096, 2048, 1024]) {
+    try {
+      const c = mk(w, 64);
+      const g = c.getContext('2d', { willReadFrequently: true });
+      if (!g) continue;
+      g.fillStyle = '#fff';
+      g.fillRect(0, 0, w, 64);
+      if (g.getImageData(w - 2, 32, 1, 1).data[3] === 255) { _maxCanvas = w; return w; }
+    } catch (e) { /* refused outright: try smaller */ }
+  }
+  _maxCanvas = 1024;
+  return _maxCanvas;
+}
+
+/**
  * Unwrap the arc one photo shows into a flat strip.
  *
  * @param {CanvasImageSource} src   the photo
@@ -405,6 +441,64 @@ export function splitJarWrap(full, shape) {
     // Source and destination are the same proportion by construction now, so
     // this is a resample and cannot be a stretch.
     out.getContext('2d').drawImage(full, 0, sy, full.width, sh,
+                                   0, 0, out.width, out.height);
+    return out;
+  };
+  return { body: band(g.body), skirt: band(g.skirt) };
+}
+
+/* =====================================================================
+   A LABEL THAT ARRIVED FLAT
+
+   The peeled route hands over one rectangle: the band lifted off the jar in
+   one piece, or a scan of the same artwork. That is NOT the body band. It is
+   the whole printed band, from the bottom edge of the print to the top edge,
+   and on every jar here it spans the seam, which is exactly why peeling it
+   off tears it.
+
+   It used to be composed at the tall jar's BODY aspect whatever shape had
+   been chosen, and uploaded as the body band alone. Two consequences, both
+   bad: the cap got no artwork at all and fell through to the template's drawn
+   black skirt, and on the squat jar the entire label was squeezed into a
+   7.5mm sliver of glass because that jar's body band is a 21.5:1 strip.
+
+   So a flat label is composed at the PRINTED band's proportion and then cut
+   at the seam like any other wrap.
+   ===================================================================== */
+
+/** The full printed band, heel edge to crown edge, in millimetres. */
+export function printedBand(shape) {
+  const g = wrapGeom(shape);
+  return { lo: g.body.lo, hi: g.skirt.hi };
+}
+
+/** Circumference over the printed band's height. */
+export function printedAspect(shape) {
+  const g = wrapGeom(shape);
+  const b = printedBand(shape);
+  return (2 * Math.PI * g.R) / (b.hi - b.lo);
+}
+
+/**
+ * Cut a PRINTED-BAND wrap into the two bands the renderer needs.
+ *
+ * Same idea as splitJarWrap and deliberately not the same function: that one
+ * measures rows against the whole jar including the bare glass and bare wood,
+ * this one against the print alone. Feeding a flat label to splitJarWrap
+ * would place the seam too low by however much bare glass the jar shows.
+ */
+export function splitPrintedWrap(printed, shape) {
+  const g = wrapGeom(shape);
+  const span = printedBand(shape);
+  const H = span.hi - span.lo;
+  const band = (b) => {
+    const vTop = (span.hi - b.hi) / H;
+    const vBot = (span.hi - b.lo) / H;
+    const sy = Math.round(vTop * printed.height);
+    const sh = Math.max(1, Math.round((vBot - vTop) * printed.height));
+    const out = mk(printed.width,
+                   Math.max(1, Math.round(printed.width / bandAspect(g, b))));
+    out.getContext('2d').drawImage(printed, 0, sy, printed.width, sh,
                                    0, 0, out.width, out.height);
     return out;
   };
