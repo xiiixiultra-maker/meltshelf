@@ -499,9 +499,14 @@ footer a:hover{color:var(--green)}
   </section>
   <section class="wrap cta">
     <h2>Start your shelf.</h2>
-    <!-- Native POST to the relay; _next bounces straight back with ?joined=1
-         and the page confirms. There is deliberately NO emailed confirmation:
-         the relay's autoresponse feature does not deliver on either of its
+    <!-- The address goes to the DATABASE, through join_waitlist, so the admin
+         page can actually show it. The relay is kept as a best-effort email
+         ping and as the fallback if the database call fails, so a signup is
+         never lost to a failed request. The form still carries its relay
+         attributes for exactly that fallback.
+
+         There is deliberately NO emailed confirmation to the person signing
+         up: the relay's autoresponse does not deliver on either of its
          endpoints (tested with three addresses, spam included), and a promise
          the wire cannot keep is worse than none. The page states the outcome
          instead, which is the one channel we fully control. -->
@@ -550,6 +555,14 @@ footer a:hover{color:var(--green)}
   "three/addons/": "./vendor/three/addons/"
 } }
 </script>
+
+<!-- src/auth.js reads the global this defines and throws if it is missing, so
+     it has to be a classic script and it has to come first. The homepage never
+     touched the database until the waitlist form started writing a row, which
+     is why it was not here: without it every signup fell through to the email
+     fallback and no row was ever written, silently, because the fallback works.
+     `defer` is wrong here, the module below can run before a deferred script. -->
+<script src="./vendor/supabase/supabase.umd.js"></script>
 
 <script type="module">
 import * as THREE from 'three';
@@ -962,23 +975,87 @@ $('smokeAmt').addEventListener('input', (e) => { SMOKE.amount = +e.target.value;
 const sponsorName = document.body.dataset.sponsor;
 if (sponsorName) $('sponsorName').textContent = sponsorName;
 
-/* The waitlist forwards straight into hello@meltshelf.com - no database, no
-   dashboard, no third-party list. The submit is a native POST (see the form
-   markup for why); this handler validates, stores the address for the return
-   leg, and sets the button state. */
-$('waitlist').addEventListener('submit', (e) => {
+/* The waitlist writes a row, then pings the inbox.
+
+   The row is what the admin page reads, so it is the one that has to land. It
+   goes through join_waitlist rather than inserting directly, because `email`
+   is the primary key: an open insert would answer "is this person on the
+   list?" through the difference between 201 and 409, to anyone holding the
+   publishable key that ships in this page. The function returns the same thing
+   either way.
+
+   The email is fired afterwards and nothing waits on it. If the database call
+   fails, the form falls back to the native POST it used to do, which emails
+   and bounces back with ?joined=1, so a signup survives a failed request. */
+$('waitlist').addEventListener('submit', async (e) => {
   const v = $('email').value.trim();
   if (!/.+@.+\..+/.test(v)) {
     e.preventDefault();
     $('fine').textContent = 'That does not look like an email address.';
     return;
   }
-  /* The return leg reads this back to greet them by address. sessionStorage,
-     not localStorage: per tab is right, a shared machine must not greet the
-     next person with someone else's signup. */
-  try { sessionStorage.setItem('ms-joined-email', v); } catch {}
+  e.preventDefault();          // before any await, or the browser ignores it
+  const form = e.target;
+
+  /* Send the address to the relay in a way that survives this page going away.
+     A plain fetch does not: the navigation two lines later cancels it, so the
+     backstop existed only when it was not needed. sendBeacon hands the request
+     to the browser, which completes it after the page is gone. */
+  const ping = () => {
+    try {
+      if (navigator.sendBeacon) return navigator.sendBeacon(form.action, new FormData(form));
+      fetch(form.action, { method: 'POST', body: new FormData(form),
+                           mode: 'no-cors', keepalive: true }).catch(() => {});
+    } catch {}
+    return false;
+  };
+
+  /* Show the receipt. The marker is written HERE and nowhere earlier: the
+     joined screen renders if either ?joined=1 or this key is present, so
+     writing it before the work succeeded left a failed submission showing
+     "You're in" for the rest of the tab's life.
+
+     sessionStorage, not localStorage: per tab is right, a shared machine must
+     not greet the next person with someone else's signup. */
+  const confirm = () => {
+    try { sessionStorage.setItem('ms-joined-email', v); } catch {}
+    location.href = '/?joined=1';
+  };
+
+  /* A bot fills every field it can see. A human never sees this one, so
+     anything in it means the submission is probably not a person. Probably:
+     a password manager or an over-eager autofill can trip it, so the address
+     still goes to the inbox rather than being dropped on the floor. The screen
+     says the same thing a success says, because a bot that learns it was
+     caught is a bot that adapts. */
+  if ($('hp') && $('hp').value) { ping(); confirm(); return; }
+
   $('joinBtn').disabled = true;
   $('joinBtn').textContent = 'Joining…';
+
+  try {
+    const { db, configured } = await import('./src/auth.js');
+    if (!configured()) throw new Error('not configured');
+    const { data, error } = await db().rpc('join_waitlist', { addr: v });
+    if (error) throw error;
+
+    /* 'busy' means the function stored NOTHING: rate limited, or the daily
+       ceiling was full. It is not an error and it says nothing about who is on
+       the list, it just means this address is not on it. So use the other
+       channel rather than tell somebody they are on a list they are not on. */
+    if (data === 'busy') throw new Error('waitlist busy, nothing stored');
+
+    ping();                    // the inbox copy, now that the row is safe
+    confirm();
+  } catch (err) {
+    /* Fall back to what this form did before there was a database behind it.
+       A native submit posts to the relay and bounces to ?joined=1, so the
+       person still gets through and the address still reaches somebody. It is
+       a real navigation, so it does not need the beacon. */
+    console.warn('[meltshelf] waitlist row not stored, falling back to email', err);
+    try { sessionStorage.setItem('ms-joined-email', v); } catch {}
+    form.submit();
+  }
 });
 
 /* The return leg of the native POST. There is no emailed confirmation, on
