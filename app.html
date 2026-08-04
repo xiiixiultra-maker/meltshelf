@@ -396,6 +396,20 @@ import { makeCharrasPack } from './src/labelArtCharras.js';
 import { makeTemplatePack, CONFIG } from './src/labelArtTemplate.js';
 import { converter, differenceEuclidean } from 'culori';
 
+
+/* IS THIS A PHONE. Coarse on purpose: it only has to be right enough to choose
+   between two sets of numbers.
+
+   Declared at the very top of the module, above everything that reads it, and
+   that placement is load bearing. It is read by the shelf spacing, the
+   renderer, the lights and the texture tiers, all of which run at module
+   evaluation. A `const` used above its own declaration is a ReferenceError
+   that takes the entire page down, on every device, and it has already
+   happened twice on this file: `node --check` passes it, because it is not a
+   syntax error, and only loading the page finds it. */
+const IS_PHONE = matchMedia('(pointer: coarse)').matches
+  || Math.min(innerWidth, innerHeight) < 700;
+
 const toOk = converter('oklab');
 const dE = differenceEuclidean('oklab');
 
@@ -433,9 +447,16 @@ let ME = null;
    cut to the result.
    ===================================================================== */
 const BAY_ORDER = ['rotation', 'wishlist', 'prototype'];
-const PITCH = 68;      // centre to centre between jars, 18mm of daylight
-const BAY_GAP = 104;   // between bays, wide enough for a divider and a cap
-const EDGE = 76;       // plank beyond the outermost jar
+
+/* SPACED FOR THE SCREEN IT IS ON.
+   The desktop numbers put six jars across roughly 410mm of shelf. Framed
+   correctly on a 393px portrait phone that is six specks: the camera has to
+   stand about 2.2 metres back to hold it. Tighter spacing means the same six
+   jars occupy less world, so each one is bigger in frame at any distance.
+   Fitting the camera without this would be arithmetically right and useless. */
+const PITCH   = IS_PHONE ? 46  : 68;   // centre to centre between jars
+const BAY_GAP = IS_PHONE ? 62  : 104;  // between bays, room for a divider
+const EDGE    = IS_PHONE ? 40  : 76;   // plank beyond the outermost jar
 
 let SHELF = { centres: {}, extent: 0, half: 0 };
 function layout(rows) {
@@ -487,13 +508,30 @@ function fitShelf() {
     dividers.push(d);
   }
 
-  // Pull back until the whole row fits across, with the jar's own radius and
-  // a margin included. Horizontal half-angle is the vertical fov scaled by
-  // the aspect, which is why a narrow window has to stand further off.
-  const need = halfWidth + 30;
-  const tanH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;
-  const dist = THREE.MathUtils.clamp(need / Math.max(0.2, tanH), 240, 1400);
-  camera.position.set(0, dist * 0.32 + 40, dist);
+  /* Pull back until the whole row fits, on BOTH axes.
+
+     The half-angles: vertical is the fov, horizontal is the fov scaled by the
+     aspect, which is why a narrow window has to stand further off.
+
+     There used to be a Math.max(0.2, tanH) here. On a 393 x 852 phone tanH is
+     0.141, so the floor made the distance SMALLER than the one that fits, and
+     it could only ever fire below an aspect of about 0.65: on a phone in
+     portrait and nowhere else. The guard it was meant to be is a guard against
+     a zero aspect, which is what the tiny epsilon below does without lying
+     about the geometry. */
+  const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
+  const tanV = Math.tan(halfFov);
+  const tanH = tanV * Math.max(0.05, camera.aspect);
+
+  const needX = halfWidth + 30;                 // half the plank, plus air
+  const needY = 34;                             // a jar is about 42mm tall
+  // Whichever axis runs out first decides. Fitting width alone cut the jars
+  // off top and bottom on a tall window, which is the same bug rotated.
+  const dist = THREE.MathUtils.clamp(
+    Math.max(needX / tanH, needY / tanV), 240, 4200);
+  // The lift is a FRACTION of the distance so the angle onto the shelf stays
+  // the same however far back it has to stand.
+  camera.position.set(0, dist * 0.30 + 24, dist);
   controls.target.set(0, 20, 0);
   controls.minDistance = 90;
   controls.maxDistance = dist * 2.2;
@@ -531,13 +569,6 @@ let EMPTY = true;
 
 /* ---------------------------------------------------------------- scene */
 const app = document.getElementById('app');
-/* Is this a phone? Coarse on purpose: it only has to be right enough to pick
-   between two budgets. Declared HERE, above the renderer, because the renderer
-   is the first thing that reads it and a const used before its declaration is
-   a ReferenceError that kills the whole page rather than a warning. */
-const IS_PHONE = matchMedia('(pointer: coarse)').matches
-  || Math.min(innerWidth, innerHeight) < 700;
-
 /* Antialias allocates a MULTISAMPLED framebuffer at the full drawing buffer
    size. On a phone at pixelRatio 2 that is around 54 MB for edges the
    compositor then scales away. Off, at 1.5, it is about 16 MB and looks the
@@ -1061,8 +1092,15 @@ function placeCaptions() {
     v.set(cx, -10, 58).project(camera);
     const behind = v.z > 1;
     el.style.opacity = behind ? 0 : 1;
-    el.style.left = ((v.x * 0.5 + 0.5) * innerWidth) + 'px';
-    el.style.top = ((-v.y * 0.5 + 0.5) * innerHeight) + 'px';
+    // Clamped into the window. These are DOM elements placed from a projected
+    // 3-D point, so a bay off the left of the frame put its label at a
+    // negative x and the browser cut the text in half. A caption pinned to the
+    // edge still says which bay it belongs to; half a word says nothing.
+    const w = el.offsetWidth || 120, h = el.offsetHeight || 16;
+    const x = (v.x * 0.5 + 0.5) * innerWidth;
+    const y = (-v.y * 0.5 + 0.5) * innerHeight;
+    el.style.left = Math.max(8, Math.min(innerWidth - w - 8, x)) + 'px';
+    el.style.top = Math.max(8, Math.min(innerHeight - h - 8, y)) + 'px';
   }
 }
 
