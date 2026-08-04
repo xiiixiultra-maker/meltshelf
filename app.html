@@ -818,7 +818,13 @@ const BUDGET = TIERS.shelf;      // what texWidthFor reads when nothing says oth
 function texWidthFor(stored, shape, tier = BUDGET) {
   const glMax = renderer.capabilities.maxTextureSize || 4096;
   const canvasMax = maxCanvasWidth();
-  const wanted = Math.round(tier.band * shape.bodyAspect);
+  // The BINDING band, not the body by convention. Rows = width / aspect, so
+  // the LOWEST aspect band produces the most rows and is the one that decides
+  // whether the budget holds. On the tall jar that happens to be the body, so
+  // keying off bodyAspect was right by luck; on the squat jar it is the skirt,
+  // and keying off the body over-allocated it by 2.8x. Luck is not a rule.
+  const binding = Math.min(shape.bodyAspect, shape.skirtAspect);
+  const wanted = Math.round(tier.band * binding);
   const source = stored && stored.body && stored.body.width
     ? stored.body.width
     : wanted;
@@ -840,6 +846,7 @@ for (const [id, factory] of Object.entries({
   SHAPES[id] = {
     factory,
     bodyAspect: bandAspect(g, g.body),
+    skirtAspect: bandAspect(g, g.skirt),
     // Handed to makeTemplatePack so a stored band is painted onto a canvas of
     // its own proportion. Without it the pack builds every band at the tall
     // jar's aspect and crops whatever does not fit.
@@ -893,7 +900,6 @@ async function buildOne(item, tier) {
     // A jar photographed by its owner wears its own wrap, and no grip ribs:
     // real jars are smooth black glass.
     const shape = SHAPES[item.spec?.shape] ?? SHAPES.tall;
-    const tier = TIERS.shelf;
     const logo = LOGO;
     const stored = await loadStoredArt(item);
     const label = stored
