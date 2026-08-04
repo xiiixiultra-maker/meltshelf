@@ -85,6 +85,41 @@ export function createDisplayCase({ THREE, sections, labels = {}, slots = 6, com
     color: new THREE.Color('#8A9099'), roughness: 0.34, metalness: 0.9,
   }));
 
+  /* GLASS SHELVES. A solid board hides whatever is under it, which on a case
+     three sections deep means the bottom two are lit and looked at through a
+     letterbox. Glass shelves let the whole stack read at once.
+
+     No transmission here either, for the same reason as the door: it costs a
+     full extra scene pass and a drawing-buffer-sized render target, and there
+     would now be three of them. A thin transparent surface with a hard
+     specular is what reads as a glass shelf anyway, because what sells it is
+     the EDGE catching light, not refraction through 7mm of float glass.
+
+     castShadow off. A glass shelf that threw a solid shadow onto the jars
+     below would undo the thing it is here to do. */
+  const glassShelf = keep(new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color('#C6D8E4'),
+    transparent: true,
+    /* 0.06, not the 0.13 this started at, and the reason is that a BOX is not
+       one surface. At DoubleSide the camera looks through the top face, the
+       cavity and the bottom face, so the opacities compound and the sheet
+       lands near 0.25. FrontSide and half the value put the actual result
+       where 0.13 was aiming.
+
+       Clearcoat and env are down for the same class of reason: the camera sits
+       above the case, so every shelf is seen at a grazing angle, and that is
+       exactly where a strong specular turns clear glass into a white plane.
+       Physically right, and it defeats the entire point of a glass shelf. */
+    opacity: 0.06,
+    roughness: 0.04,
+    metalness: 0.0,
+    clearcoat: 0.45,
+    clearcoatRoughness: 0.04,
+    envMapIntensity: 0.85,
+    side: THREE.FrontSide,
+    depthWrite: false,
+  }));
+
   const box = (w, h, d, mat, x, y, z, name) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     m.position.set(x, y, z);
@@ -102,7 +137,20 @@ export function createDisplayCase({ THREE, sections, labels = {}, slots = 6, com
   const zBack = -D.depth / 2 - D.wall / 2;
   const zMidD = 0;
 
-  box(D.outerW, D.wall, D.outerD, carcass, 0, -D.wall / 2, zMidD, 'case-floor');
+  /* THE FLOOR IS SOLID, and it is the only horizontal surface that is. Every
+     shelf above it is glass so the whole stack can be seen through at once;
+     the bottom of a case is the bottom, and glass there would show the
+     underside of the furniture. It is also what gives the stack somewhere to
+     end, which a case made entirely of glass shelves does not have. */
+  const floorMat = keep(new THREE.MeshStandardMaterial({
+    color: new THREE.Color('#0A0C0E'), roughness: 0.55, metalness: 0.08,
+  }));
+  const floor = new THREE.Mesh(
+    new THREE.BoxGeometry(D.outerW, D.wall, D.outerD), floorMat);
+  floor.position.set(0, -D.wall / 2, zMidD);
+  floor.name = 'case-floor';
+  floor.receiveShadow = true;
+  root.add(floor);
   box(D.outerW, D.wall, D.outerD, carcass, 0, D.outerH - D.wall / 2 - D.reveal, zMidD, 'case-top');
   box(D.wall, D.outerH, D.outerD, carcass, -halfW + D.wall / 2, D.outerH / 2 - D.reveal, zMidD, 'case-left');
   box(D.wall, D.outerH, D.outerD, carcass, halfW - D.wall / 2, D.outerH / 2 - D.reveal, zMidD, 'case-right');
@@ -126,11 +174,23 @@ export function createDisplayCase({ THREE, sections, labels = {}, slots = 6, com
     // The board itself. The lowest section stands on the case floor, so it
     // gets no board of its own: it would be a board lying on a board.
     if (i < S - 1 || S === 1) {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(D.innerW, D.board, D.depth), inner);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(D.innerW, D.board, D.depth), glassShelf);
       b.position.set(0, -D.board / 2, 0);
-      b.receiveShadow = true; b.castShadow = true;
+      // Neither. Glass does not throw a solid shadow onto the shelf below, and
+      // a nearly transparent surface receiving one just muddies it.
+      b.receiveShadow = false; b.castShadow = false;
+      b.renderOrder = 2;
       b.name = 'shelf-board';
       g.add(b);
+
+      /* The front edge, and it is doing the work. A sheet of glass seen face
+         on is almost nothing; you know it is there because its edge catches
+         light. Metal rather than glass so it always reads, and it doubles as
+         the lip the label plate is screwed to. */
+      const lip = new THREE.Mesh(new THREE.BoxGeometry(D.innerW, D.board, 1.6), metal);
+      lip.position.set(0, -D.board / 2, D.depth / 2 - 0.8);
+      lip.name = 'shelf-lip';
+      g.add(lip);
     }
 
     shelves.push({ bay, y, group: g, label: null });
