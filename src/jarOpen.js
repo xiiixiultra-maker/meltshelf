@@ -115,8 +115,23 @@ function placeCap(jar, v) {
  * jar cancelled the first one's tween mid-travel and left a cap floating at
  * whatever height it had reached.
  */
-export function createOpener() {
-  let openJar = null;
+/**
+ * @param {object}  [o]
+ * @param {boolean} [o.multi]  allow more than one jar open at once.
+ *
+ * The default is one at a time, and it was the right default for a PLANK:
+ * every cap is set down on the same surface, so a second open jar puts a
+ * second lid in the same strip of shelf and neither obviously belongs to
+ * anything.
+ *
+ * A case is different. Each jar stands on its own shelf and its cap is placed
+ * behind it in that shelf's own space, so two open jars are two open jars
+ * rather than a pile. And comparing what is INSIDE two jars is a thing a
+ * person collecting these actually wants to do, which cannot be done one at a
+ * time from memory.
+ */
+export function createOpener({ multi = false } = {}) {
+  const open = new Set();
 
   function tween(jar, to) {
     if (!jar) return;
@@ -138,19 +153,37 @@ export function createOpener() {
   return {
     isOpen: (jar) => !!jar?.userData.wantOpen,
 
-    /** Open or close one jar. One at a time: two open jars on a shelf reads
-     *  as a bug, and the cap you set down stops belonging to anything. */
+    /** Every jar currently open, so a caller can offer to shut them. */
+    openJars: () => [...open],
+
+    /** Open or close one jar. */
     toggle(jar) {
       if (!jar) return false;
       const next = !jar.userData.wantOpen;
-      if (next && openJar && openJar !== jar) {
-        openJar.userData.wantOpen = false;
-        tween(openJar, 0);
+      if (next && !multi) {
+        for (const other of open) {
+          if (other === jar) continue;
+          other.userData.wantOpen = false;
+          tween(other, 0);
+        }
+        open.clear();
       }
       jar.userData.wantOpen = next;
-      openJar = next ? jar : null;
+      if (next) open.add(jar); else open.delete(jar);
       tween(jar, next ? OPEN_T : 0);
       return next;
+    },
+
+    /** Put a REBUILT jar back into the state its predecessor was in.
+     *  Retiering a jar makes a new object, and a new jar is closed, so an open
+     *  jar that changed texture tier used to snap shut on its own. */
+    adopt(oldJar, freshJar) {
+      open.delete(oldJar);
+      if (!oldJar?.userData.wantOpen) return;
+      freshJar.userData.wantOpen = true;
+      open.add(freshJar);
+      const rt = freshJar.userData.sculptRuntime;
+      if (rt) { rt.setOpen(OPEN_T); placeCap(freshJar, OPEN_T); }
     },
 
     /** Shut everything, without animating. For a tier change that removes a
@@ -162,7 +195,7 @@ export function createOpener() {
         j.userData.sculptRuntime?.setOpen(0);
         if (j.userData.capHome) j.userData.lid?.position.copy(j.userData.capHome);
       }
-      openJar = null;
+      open.clear();
     },
   };
 }

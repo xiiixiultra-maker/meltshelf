@@ -218,6 +218,15 @@ body.free #fxLocked{display:block}
 
    On a narrow screen it is a sheet that slides up from a labelled button
    instead, because a floating panel there would cover the shelf it adjusts. */
+/* Bottom right, opposite the lighting button, so the two cannot be confused
+   for each other and neither sits under the orbit hint. */
+#closeAll{position:fixed;right:16px;bottom:52px;z-index:8;
+  background:var(--pane);color:var(--l2);border:1px solid var(--line);
+  border-radius:999px;padding:11px 16px;font:inherit;font-size:12px;
+  cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.5)}
+#closeAll:hover{border-color:var(--green);color:var(--green)}
+#closeAll[hidden]{display:none}
+
 /* Above the orbit hint, not on top of it. */
 #fxBtn{position:fixed;left:16px;bottom:52px;z-index:8;display:none;
   align-items:center;gap:7px;background:var(--pane);color:var(--l1);
@@ -313,6 +322,7 @@ body.free #fxLocked{display:block}
   <a class="primary" href="./">See what premium adds</a>
 </div>
 
+<button id="closeAll" type="button" hidden>Close jars</button>
 <button id="fxBtn" type="button" aria-controls="fx" aria-expanded="false">
   <i></i>Case lighting
 </button>
@@ -739,7 +749,11 @@ scene.add(fill);
    Built here, before any jar exists, because the shelf is lit whether or not
    anything is standing on it. */
 const FX = createShelfFx({ THREE, scene });
-const OPENER = createOpener();
+/* MULTI. Comparing what is inside two jars is the reason somebody opens two,
+   and it cannot be done one at a time from memory. shelf.html keeps the
+   one-at-a-time default: it is a plank, where every set-down cap lands in the
+   same strip and a second one reads as clutter. */
+const OPENER = createOpener({ multi: true });
 
 // Bay dividers are rebuilt by fitShelf once the bays have been placed, so
 // this starts empty rather than at fixed x positions.
@@ -1141,7 +1155,15 @@ async function buildOne(item, tier) {
    NOT low poly: the geometry is a few lathes and costs nothing measurable.
    Every megabyte here was texture.
    ===================================================================== */
-let focused = null;
+/* HOW MANY JARS MAY HOLD FULL DETAIL AT ONCE.
+   Openness and texture tier are now separate questions. Any number of jars can
+   be open; only this many carry focus-tier textures, because that is the part
+   that costs memory and the phone has already been over its budget once. Past
+   the cap the OLDEST focused jar drops back to shelf detail and STAYS OPEN,
+   which is the right trade: you are comparing contents, and the contents are
+   geometry, not label resolution. */
+const FOCUS_MAX = IS_PHONE ? 1 : 3;
+const focusQueue = [];
 
 /** Swap one jar for a rebuild of itself at another tier, in place. */
 async function retier(item, tier) {
@@ -1160,6 +1182,10 @@ async function retier(item, tier) {
   scene.remove(old);
   jars[i] = fresh;
   scene.add(fresh);
+
+  // A rebuilt jar is a NEW jar, and a new jar is shut. Without this, a jar
+  // that changed texture tier while open snapped its own lid back on.
+  OPENER.adopt(old, fresh);
   old.userData.sculptRuntime.dispose();
 
   // Cap rest positions depend on the neighbours, so they are recomputed
@@ -1170,20 +1196,21 @@ async function retier(item, tier) {
 
 /** Full detail for this jar, shelf detail for whichever one had it before. */
 async function focusJar(item) {
-  if (focused && focused !== item) {
-    const was = focused;
-    focused = null;
-    await retier(was, TIERS.shelf);
+  const at = focusQueue.indexOf(item);
+  if (at >= 0) focusQueue.splice(at, 1);
+  focusQueue.push(item);
+  while (focusQueue.length > FOCUS_MAX) {
+    const evicted = focusQueue.shift();
+    await retier(evicted, TIERS.shelf);      // still open, just not as sharp
   }
-  focused = item;
   return retier(item, TIERS.focus);
 }
 
-async function unfocusJar() {
-  if (!focused) return;
-  const was = focused;
-  focused = null;
-  await retier(was, TIERS.shelf);
+async function unfocusJar(item) {
+  const at = focusQueue.indexOf(item);
+  if (at < 0) return;
+  focusQueue.splice(at, 1);
+  await retier(item, TIERS.shelf);
 }
 
 // Re-fit on resize: the camera distance depends on the viewport aspect, so a
@@ -1250,7 +1277,8 @@ function applyTier() {
 
   // a card for a jar that just left the shelf must leave with it
   if (picked && !p && (picked.bay === 'wishlist' || picked.bay === 'prototype')) {
-    card.classList.add('off'); picked = null; setDoorOpen(false);
+    card.classList.add('off'); picked = null;
+    if (!OPENER.openJars().length) setDoorOpen(false);
   }
 }
 
@@ -1268,7 +1296,11 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
   ray.setFromCamera(ptr, camera);
   // locked bays are not clickable: raycast only what is on the shelf
   const hit = ray.intersectObjects(jars.filter((j) => j.visible), true)[0];
-  if (!hit) { card.classList.add('off'); picked = null; setDoorOpen(false); return; }
+  if (!hit) {
+    card.classList.add('off'); picked = null;
+    if (!OPENER.openJars().length) setDoorOpen(false);
+    return;
+  }
   let root = hit.object;
   while (root.parent && !root.userData.item) root = root.parent;
   show(root.userData.item);
@@ -1528,9 +1560,26 @@ q('c-open').addEventListener('click', async () => {
   // back; it returns saying Close jar, so the jar is the way back out.
   if (nowOpen) card.classList.add('off');
 
-  // Back to shelf detail once it is shut. Not while it is open: the jar is
-  // still the thing being looked at.
-  if (!nowOpen) unfocusJar();
+  // Back to shelf detail once THIS jar is shut. Others stay as they are.
+  if (!nowOpen) unfocusJar(picked);
+  syncCloseAll();
+});
+
+/* CLOSE ALL. Only appears once there is more than one lid off, because with
+   one open jar the card's own button already says Close jar and a second
+   control would be two ways to do the same thing. */
+function syncCloseAll() {
+  const n = OPENER.openJars().length;
+  const btn = q('closeAll');
+  btn.hidden = n < 2;
+  btn.textContent = 'Close ' + n + ' jars';
+}
+q('closeAll').addEventListener('click', () => {
+  OPENER.closeAll(jars);
+  for (const it of [...focusQueue]) unfocusJar(it);
+  setDoorOpen(false);
+  syncCloseAll();
+  if (picked) syncOpenUI(jarFor(picked));
 });
 
 /* =====================================================================
