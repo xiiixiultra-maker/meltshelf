@@ -531,8 +531,47 @@ let EMPTY = true;
 
 /* ---------------------------------------------------------------- scene */
 const app = document.getElementById('app');
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+/* Is this a phone? Coarse on purpose: it only has to be right enough to pick
+   between two budgets. Declared HERE, above the renderer, because the renderer
+   is the first thing that reads it and a const used before its declaration is
+   a ReferenceError that kills the whole page rather than a warning. */
+const IS_PHONE = matchMedia('(pointer: coarse)').matches
+  || Math.min(innerWidth, innerHeight) < 700;
+
+/* Antialias allocates a MULTISAMPLED framebuffer at the full drawing buffer
+   size. On a phone at pixelRatio 2 that is around 54 MB for edges the
+   compositor then scales away. Off, at 1.5, it is about 16 MB and looks the
+   same in the hand. The desktop keeps both. */
+const renderer = new THREE.WebGLRenderer({
+  antialias: !IS_PHONE,
+  powerPreference: IS_PHONE ? 'default' : 'high-performance',
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, IS_PHONE ? 1.5 : 2));
+
+/* Declared before the handlers that assign it. They only run later so this was
+   already safe, but a flag defined below the code that sets it is a trap for
+   whoever moves one of them next. */
+let CONTEXT_LOST = false;
+
+/* iOS RECLAIMS A WEBGL CONTEXT whenever it wants the memory, and it is allowed
+   to. Without this the canvas is dead afterwards, the loop keeps drawing into
+   nothing, and Safari eventually shows "A problem repeatedly occurred", which
+   is the report that started this. preventDefault is what makes the loss
+   RECOVERABLE: without it the browser will not fire contextrestored at all. */
+renderer.domElement.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  console.warn('[meltshelf] WebGL context lost, pausing');
+  CONTEXT_LOST = true;
+  const st = q('status');
+  if (st) st.textContent = 'The graphics context was reclaimed. Restoring.';
+});
+renderer.domElement.addEventListener('webglcontextrestored', () => {
+  console.warn('[meltshelf] WebGL context restored');
+  CONTEXT_LOST = false;
+  // Textures and geometry are gone with the context, so the shelf is rebuilt
+  // rather than redrawn. Reloading is the honest way to do that here.
+  location.reload();
+});
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -558,7 +597,9 @@ controls.enableDamping = true; controls.dampingFactor = .07;
 controls.minDistance = 90; controls.maxDistance = 900;
 controls.maxPolarAngle = Math.PI * 0.52;      // never below the plank
 
-scene.add(createJarLights(LIGHTING.studio));
+// A 2048 shadow map is 33.6 MB for one light and is re-rendered every frame.
+// This is a soft contact shadow under a jar, not an edge anybody studies.
+scene.add(createJarLights(LIGHTING.studio, IS_PHONE ? 512 : 1024));
 const fill = new THREE.DirectionalLight(0xbcd0e0, 0.22);
 fill.position.set(120, 60, 140);
 scene.add(fill);
@@ -672,8 +713,22 @@ async function decodeImage(url) {
 async function loadStoredArt(item) {
   const parts = item.artParts || [];
   if (!parts.length) { item.artNote = 'none stored'; return null; }
+  // The BLOBS are cached on the item, not the decoded bitmaps. A decoded
+  // 4096 x 538 band is 8 MB of native memory for as long as it is referenced;
+  // the JPEG it came from is about 400 KB. Since a jar is now rebuilt whenever
+  // it changes tier, holding the decoded form would mean holding every jar's
+  // full-size art forever, which is the bug this whole change exists to avoid.
+  if (item.artBlobs) {
+    const art = {};
+    await Promise.all(Object.entries(item.artBlobs).map(async ([key, blob]) => {
+      try { art[key] = await createImageBitmap(blob); } catch {}
+    }));
+    return Object.keys(art).length ? art : null;
+  }
+
   const c = db();
   const art = {};
+  const blobs = {};
   const failed = [];
   await Promise.all(parts.map(async (part) => {
     const { data, error } = await c.storage.from('jar-art')
@@ -687,10 +742,12 @@ async function loadStoredArt(item) {
     const key = part === 'base' ? 'bottom' : part;
     try {
       art[key] = await createImageBitmap(data);
+      blobs[key] = data;
     } catch (e) {
       failed.push(part + ': would not decode');
     }
   }));
+  item.artBlobs = Object.keys(blobs).length ? blobs : null;
   const got = Object.keys(art);
   // The reason travels WITH the jar. A console.warn is invisible to somebody
   // holding a phone, and a jar that quietly falls back to the template looks
@@ -712,16 +769,60 @@ async function loadStoredArt(item) {
  * browsers enforce by handing back a canvas that draws NOTHING rather than by
  * failing. That is a blank label on a phone and a perfect one on a desktop.
  */
-function texWidthFor(stored, shape) {
+/* =====================================================================
+   THE TEXTURE BUDGET
+
+   A label texture costs width TIMES height. The width is the whole
+   circumference and the height is one band, so on the squat jar's body band,
+   21.5 to 1, the width is the expensive axis and the height is the one that
+   decides whether the label looks sharp.
+
+   Sizing by width, which is what this did until a phone started crashing, gave
+   4096 x 515 for one band. Twelve canvases like that is 52 MB PER JAR,
+   measured, and five jars of it is more memory than iOS Safari will give a tab
+   before it kills it.
+
+   So the budget is stated in the units that matter: how many pixels tall each
+   band gets. The width follows from the aspect and is then clamped to what the
+   device will really hold.
+   ===================================================================== */
+/**
+ * Two tiers, because a shelf and a jar you are looking at need different
+ * things.
+ *
+ * SHELF is what every jar gets at rest. A jar on a full shelf is around 120
+ * screen pixels tall, so a band of 96 is already more than it can show, and
+ * the number that matters is that this multiplies by the jar COUNT.
+ *
+ * FOCUS is the jar you opened. Exactly one at a time, so it does not multiply
+ * by anything and it can afford to be the size the label deserves.
+ */
+const TIERS = {
+  shelf: IS_PHONE ? { band: 96,  face: 128, aniso: 2 }
+                  : { band: 160, face: 256, aniso: 4 },
+  focus: IS_PHONE ? { band: 256, face: 512, aniso: 4 }
+                  : { band: 512, face: 1024, aniso: 16 },
+};
+const BUDGET = TIERS.shelf;      // what texWidthFor reads when nothing says otherwise
+
+/**
+ * How wide to build this jar's label, in pixels.
+ *
+ * Derived from BUDGET.band, the vertical resolution the band should have, and
+ * then clamped three ways: never past what was actually stored, since that is
+ * upscaling photographs that do not have the detail; never past the GL limit;
+ * and never past the canvas cap this browser will honour, which is MEASURED
+ * because 4096 is mobile Safari but some Android WebViews stop at 2048 and a
+ * literal here would reproduce this same crash one device tier down.
+ */
+function texWidthFor(stored, shape, tier = BUDGET) {
   const glMax = renderer.capabilities.maxTextureSize || 4096;
-  // MEASURED, not assumed. 4096 is mobile Safari's cap but some Android
-  // WebViews stop at 2048, and a literal here would reproduce this same bug
-  // one device tier down.
   const canvasMax = maxCanvasWidth();
+  const wanted = Math.round(tier.band * shape.bodyAspect);
   const source = stored && stored.body && stored.body.width
-    ? stored.body.width                 // never upscale past what was stored
-    : Math.round(300 * shape.bodyAspect);
-  return Math.max(512, Math.min(source, glMax, canvasMax));
+    ? stored.body.width
+    : wanted;
+  return Math.max(512, Math.min(wanted, source, glMax, canvasMax));
 }
 
 /**
@@ -747,15 +848,41 @@ for (const [id, factory] of Object.entries({
   };
 }
 
+/** The Charras logo, decoded once and kept: every rebuild would otherwise
+ *  re-fetch and re-decode it. */
+let LOGO = null;
+
 async function build() {
   // Charras needs its logo decoded before the label can bake
-  const logo = await decodeImage('./assets/charras-logo.png');
+  LOGO = LOGO || await decodeImage('./assets/charras-logo.png');
   await document.fonts.ready;
 
   for (const item of ROSTER) {
-   // ONE BAD JAR COSTS ONE JAR. This loop builds the whole shelf, so anything
-   // that throws inside it used to cost every jar after it as well, and the
-   // page would sit on "building your shelf" with no idea why.
+    const jar = await buildOne(item, TIERS.shelf);
+    if (!jar) continue;
+    scene.add(jar);
+    jars.push(jar);
+  }
+
+  /* Where each cap goes is decided AFTER the row exists, because the answer
+     depends on the neighbours: the lid goes toward whichever side has more
+     room. Done inside the loop, every jar would be deciding against a shelf
+     that was still half empty. */
+  const xs = jars.map((j) => j.position.x);
+  for (const j of jars) prepareJar(j, xs);
+}
+
+/**
+ * Build ONE jar at ONE tier.
+ *
+ * Lifted out of build() so the shelf and the on-demand upgrade go down exactly
+ * the same path. Two implementations of "make a jar" would drift, and on this
+ * project that has caused more bugs than any other single thing.
+ *
+ * @returns {Group|null} null if it could not be built, having said why on the
+ *          item, so one bad jar costs one jar rather than every jar after it.
+ */
+async function buildOne(item, tier) {
    try {
     // A jar whose artwork we hold renders with it. A jar whose artwork is not
     // stored yet renders as the template mould tinted with ITS OWN captured
@@ -766,6 +893,8 @@ async function build() {
     // A jar photographed by its owner wears its own wrap, and no grip ribs:
     // real jars are smooth black glass.
     const shape = SHAPES[item.spec?.shape] ?? SHAPES.tall;
+    const tier = TIERS.shelf;
+    const logo = LOGO;
     const stored = await loadStoredArt(item);
     const label = stored
       ? (() => {
@@ -805,8 +934,19 @@ async function build() {
        than to nothing. */
     const jar = shape.factory({
       label,
-      textureSize: texWidthFor(stored, shape),
-      anisotropy: renderer.capabilities.getMaxAnisotropy(),
+      textureSize: texWidthFor(stored, shape, tier),
+      // The vertical budget itself, so a factory whose bands have very
+      // different aspects can size each one from its own proportions instead
+      // of inheriting a width chosen for the widest.
+      bandPx: tier.band,
+      // The cap top and base are square, so they get their own budget: the
+      // band rule would make them tier.band * 1, and the old clamp made them a
+      // 2048 square, which was the single largest allocation on the page.
+      faceSize: tier.face,
+      // Anisotropy does not multiply texture memory, it costs sample time, but
+      // 16x on every map of every jar is real work for a phone GPU and the
+      // difference is invisible at shelf size.
+      anisotropy: Math.min(renderer.capabilities.getMaxAnisotropy(), tier.aniso),
     });
     jar.position.set(item.x, 0, 0);
     jar.rotation.y = (Math.random() - 0.5) * 0.5;
@@ -815,20 +955,78 @@ async function build() {
     if (item.bay === 'wishlist') makeWishlist(jar, item.display);
     if (item.bay === 'prototype') markPrototype(jar);
 
-    scene.add(jar);
-    jars.push(jar);
+    jar.userData.tier = tier;
+
+    // The pack has baked its canvases, so the decoded source is dead weight.
+    // Without this every jar's full-size art stays resident for the life of
+    // the page and the tiering saves nothing.
+    if (stored) for (const b of Object.values(stored)) b.close?.();
+    return jar;
    } catch (err) {
      console.error('[meltshelf] could not build', item.name, err);
      item.artNote = 'could not be drawn: ' + (err && err.message ? err.message : err);
+     return null;
    }
-  }
+}
 
-  /* Where each cap goes is decided AFTER the row exists, because the answer
-     depends on the neighbours: the lid goes toward whichever side has more
-     room. Done inside the loop, every jar would be deciding against a shelf
-     that was still half empty. */
-  const xs = jars.map((j) => j.position.x);
-  for (const j of jars) prepareJar(j, xs);
+/* =====================================================================
+   TEXTURE LEVEL OF DETAIL
+
+   Every jar on the shelf is built at TIERS.shelf, which is small, because a
+   jar on a full shelf is around 120 screen pixels tall and because that cost
+   multiplies by the jar COUNT. The one jar you open is rebuilt at TIERS.focus,
+   which does not multiply by anything because there is only ever one.
+
+   A flat budget across every jar, which is what this replaced, still grew with
+   the size of the collection and would have crashed again at twenty jars. This
+   tracks what is on screen instead.
+
+   NOT low poly: the geometry is a few lathes and costs nothing measurable.
+   Every megabyte here was texture.
+   ===================================================================== */
+let focused = null;
+
+/** Swap one jar for a rebuild of itself at another tier, in place. */
+async function retier(item, tier) {
+  const old = jars.find((j) => j.userData.item === item);
+  if (!old || old.userData.tier === tier) return old;
+
+  // Built BEFORE the old one is touched, so a failure leaves the shelf intact
+  // rather than leaving a gap where a jar used to be.
+  const fresh = await buildOne(item, tier);
+  if (!fresh) return old;
+
+  fresh.position.copy(old.position);
+  fresh.rotation.copy(old.rotation);
+
+  const i = jars.indexOf(old);
+  scene.remove(old);
+  jars[i] = fresh;
+  scene.add(fresh);
+  old.userData.sculptRuntime.dispose();
+
+  // Cap rest positions depend on the neighbours, so they are recomputed
+  // against the row as it stands rather than copied off the jar being retired.
+  prepareJar(fresh, jars.map((j) => j.position.x));
+  return fresh;
+}
+
+/** Full detail for this jar, shelf detail for whichever one had it before. */
+async function focusJar(item) {
+  if (focused && focused !== item) {
+    const was = focused;
+    focused = null;
+    await retier(was, TIERS.shelf);
+  }
+  focused = item;
+  return retier(item, TIERS.focus);
+}
+
+async function unfocusJar() {
+  if (!focused) return;
+  const was = focused;
+  focused = null;
+  await retier(was, TIERS.shelf);
 }
 
 // Re-fit on resize: the camera distance depends on the viewport aspect, so a
@@ -1021,6 +1219,9 @@ addEventListener('resize', () => {
 const fxClock = new THREE.Clock();
 (function loop() {
   requestAnimationFrame(loop);
+  // Drawing into a reclaimed context does nothing but burn battery and fill
+  // the console. The restore handler brings the shelf back.
+  if (CONTEXT_LOST) return;
   // Clamped: a backgrounded tab returns one enormous delta on the frame it
   // wakes, which would teleport every puff to the ceiling at once.
   FX.step(Math.min(0.05, fxClock.getDelta()));
@@ -1113,14 +1314,33 @@ function syncOpenUI(jar) {
   more.style.height = isOpen ? more.scrollHeight + 'px' : '0px';
 }
 
-q('c-open').addEventListener('click', () => {
-  const jar = jarFor(picked);
+q('c-open').addEventListener('click', async () => {
+  let jar = jarFor(picked);
   if (!jar) return;
+  const opening = !OPENER.isOpen(jar);
+  const btn = q('c-open');
+
+  if (opening) {
+    /* Upgrade BEFORE the lid moves, so the detail is there by the time the jar
+       is worth looking at, and the rebuild hides inside the press rather than
+       popping halfway through the animation. */
+    btn.disabled = true;
+    const item = picked;
+    jar = (await focusJar(item)) || jar;
+    btn.disabled = false;
+    // The card can be dismissed or another jar picked while that was running.
+    if (picked !== item) return;
+  }
+
   const nowOpen = OPENER.toggle(jar);
   syncOpenUI(jar);
   // Out of the way while the lid comes off. Click the jar to bring the card
   // back; it returns saying Close jar, so the jar is the way back out.
   if (nowOpen) card.classList.add('off');
+
+  // Back to shelf detail once it is shut. Not while it is open: the jar is
+  // still the thing being looked at.
+  if (!nowOpen) unfocusJar();
 });
 
 /* =====================================================================

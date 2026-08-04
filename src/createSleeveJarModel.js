@@ -386,6 +386,32 @@ export function createSleeveJarModel(options = {}) {
   const showMaterials = pass === 'material' || pass === 'full';
   const aniso = options.anisotropy ?? 8;
   const texSize = options.textureSize ?? 4096;
+  // Square faces are not the wrap and must not inherit its width budget. See
+  // the note in createJarModel.js; the default preserves the old behaviour.
+  const faceSize = options.faceSize ?? Math.min(2048, texSize);
+
+  /**
+   * Target height, in pixels, for a wrapped band. Optional.
+   *
+   * A band's cost is width times height, and its height is width divided by
+   * its own aspect. This jar's two bands are 21.5:1 and 7.6:1, so ONE width
+   * cannot give both a sensible height: sized for the body, the skirt comes
+   * out 538 pixels tall and nearly three times its share of the budget.
+   *
+   * Given bandPx, each band derives its own width from its own proportions.
+   * Without it, everything falls back to texSize exactly as before.
+   */
+  const bandPx = options.bandPx ?? null;
+  // Not CIRC: bandMaterial declares one of those for the paper grain repeat,
+  // in this same scope, further down. node --check did not catch the collision
+  // and the browser did, which is the argument for loading the page.
+  const WRAP_CIRC = 2 * Math.PI * D.R;
+
+  /** How wide to build a band that is `mm` tall on the real jar. */
+  function bandWidth(mm) {
+    if (!bandPx || !(mm > 0)) return texSize;
+    return Math.max(256, Math.min(texSize, Math.round(bandPx * (WRAP_CIRC / mm))));
+  }
   const label = (typeof options.label === 'object' && options.label !== null)
     ? options.label : {};
 
@@ -431,7 +457,7 @@ export function createSleeveJarModel(options = {}) {
 
   /* ------------------------------------------------------ the base print */
   if (label.bottom) {
-    const botMaps = faceMaps(label.bottom, Math.min(2048, texSize));
+    const botMaps = faceMaps(label.bottom, faceSize);
     const tex = canvasTexture(botMaps.albedo, { srgb: true, aniso });
     const m = new THREE.MeshPhysicalMaterial({ map: tex, ...FINISH.print });
     const panel = new THREE.Mesh(
@@ -449,7 +475,7 @@ export function createSleeveJarModel(options = {}) {
   }
 
   /* ------------------------------------------------------------ the cap */
-  const wood = woodMaps(Math.min(2048, texSize), 0x5EED);
+  const wood = woodMaps(faceSize, 0x5EED);
   const woodAlb = canvasTexture(wood.albedo, { srgb: true, aniso });
   const woodRgh = canvasTexture(wood.roughness, { aniso });
   const capMat = new THREE.MeshPhysicalMaterial({
@@ -481,7 +507,7 @@ export function createSleeveJarModel(options = {}) {
     // face-up reads correctly with its default UVs. The mirroring that looked
     // like a texture bug in the first pass was the CYLINDER, and flipping the
     // disc to chase it only broke the one surface that had been right.
-    const topMaps = faceMaps(label.top, Math.min(2048, texSize));
+    const topMaps = faceMaps(label.top, faceSize);
     const tex = canvasTexture(topMaps.albedo, { srgb: true, aniso });
     const m = new THREE.MeshPhysicalMaterial({ map: tex, ...FINISH.label });
     const disc = new THREE.Mesh(
@@ -523,7 +549,7 @@ export function createSleeveJarModel(options = {}) {
       side: THREE.DoubleSide,
     });
     if (showMaterials) {
-      const maps = faceMaps(face, texSize);
+      const maps = faceMaps(face, bandWidth(mm));
       if (maps) {
         const t = canvasTexture(maps.albedo, { srgb: true, aniso });
         m.map = t;

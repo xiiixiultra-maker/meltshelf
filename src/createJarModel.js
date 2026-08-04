@@ -523,6 +523,11 @@ export function createResinCultureJarModel(options = {}) {
   const showStructure = showForm || pass === 'structural';
   const aniso = options.anisotropy ?? 8;
   const texSize = options.textureSize ?? 4096;
+  // The cap top and the base are SQUARE, so the wrap's width-based budget does
+  // not describe them: at texSize 4096 the old Math.min(2048, texSize) made a
+  // 2048 square, 16 MB of canvas for a disc that is a few hundred pixels on
+  // screen. Its own knob, defaulting to exactly the previous behaviour.
+  const faceSize = options.faceSize ?? Math.min(2048, texSize);
 
   // accepts a key or a pack object; unknown keys fail loudly rather than
   // silently rendering the wrong strain
@@ -600,7 +605,17 @@ export function createResinCultureJarModel(options = {}) {
 
   let rosinMat;
   if (showMaterials) {
-    const rm = buildRosinMaps(1024);
+    // THE BIGGEST ALLOCATION IN THE PAGE, and it was for the hash rather than
+    // the label. Three 1024 squares, 12 MB, per jar, for a surface seen
+    // through dark glass and mostly hidden by the jar's own shoulder. At six
+    // jars that was 72 MB of the budget spent on what you can least see.
+    //
+    // Worse, the seed is fixed (mulberry32(0x205112)), so all six were byte
+    // for byte identical. Sharing one set across jars is the obvious next step
+    // and is NOT done here: dispose() would then free a texture other jars are
+    // still drawing with, and a shelf that goes black when one jar closes is a
+    // worse bug than a large one. Halving the face budget is the safe win.
+    const rm = buildRosinMaps(Math.max(128, Math.round(faceSize / 2)));
     const rr = canvasTexture(rm.roughness);
     const rn = canvasTexture(rm.normal);
     disposables.push(rr, rn);
@@ -845,7 +860,7 @@ export function createResinCultureJarModel(options = {}) {
     // ['body','skirt'] and arrives here with label.top === null. Unguarded,
     // that threw before a single jar reached the shelf.
     if (label.top) {
-    const tMaps = label.top(Math.min(2048, texSize));
+    const tMaps = label.top(faceSize);
     const tGeo = new THREE.CircleGeometry(23.3, 96);
     disposables.push(tGeo);
     const tAl = canvasTexture(tMaps.albedo, { srgb: true, aniso });
@@ -896,7 +911,7 @@ export function createResinCultureJarModel(options = {}) {
        viewing the back" was a correction for a problem that is not there,
        and it printed every batch code backwards. Verified by rendering. */
     if (label.bottom) {
-      const bMaps = label.bottom(Math.min(2048, texSize));
+      const bMaps = label.bottom(faceSize);
       const bGeo = new THREE.CircleGeometry(16, 96);
       disposables.push(bGeo);
       const bAl = canvasTexture(bMaps.albedo, { srgb: true, aniso });
@@ -1003,7 +1018,7 @@ export function createResinCultureJarModel(options = {}) {
 }
 
 /** Reference-matched lighting rig (spec.lightingFromPhoto). */
-export function createJarLights(lighting = LIGHTING.studio) {
+export function createJarLights(lighting = LIGHTING.studio, shadowMapSize = 1024) {
   const L = lighting ?? LIGHTING.studio;
   const g = new THREE.Group();
   g.name = 'jar-lights';
@@ -1015,7 +1030,12 @@ export function createJarLights(lighting = LIGHTING.studio) {
   const key = new THREE.DirectionalLight(0xffe7c4, L.key);
   key.position.set(...(L.keyPos ?? [-58, 78, 46]));
   key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
+  // 2048 squared is 33.6 MB for ONE light, re-rendered every frame. Half that
+  // per side is a quarter of the memory and a quarter of the pass, and the
+  // shadow here is a soft contact shadow under a jar, not a hard edge anybody
+  // studies. The caller can raise it; nothing on a phone should.
+  const shadowPx = shadowMapSize;
+  key.shadow.mapSize.set(shadowPx, shadowPx);
   key.shadow.camera.near = 1; key.shadow.camera.far = 320;
   key.shadow.camera.left = -70; key.shadow.camera.right = 70;
   key.shadow.camera.top = 70; key.shadow.camera.bottom = -70;
