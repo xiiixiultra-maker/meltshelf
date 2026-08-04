@@ -1547,6 +1547,7 @@ function fxSaved(text, ok) {
   el.classList.toggle('ok', !!ok);
 }
 function fxTouched() {
+  paintCaseTrim();      // the case strips follow the panel, in every mode
   syncFxBtn();          // the button dot follows the shelf, always
   if (!state.premium) return;          // the server would refuse anyway
   clearTimeout(fxSaveTimer);
@@ -1613,6 +1614,7 @@ q('smokeAmt').addEventListener('input', (e) => { FX.SMOKE.amount = +e.target.val
 
 /** Push saved state into the controls, so the panel and the shelf agree. */
 function paintFxPanel() {
+  paintCaseTrim();      // the case strips follow the panel, in every mode
   syncFxBtn();
   const t = FX.TRIM;
   for (const b of q('trimSeg').children) b.classList.toggle('on', b.dataset.mode === t.mode);
