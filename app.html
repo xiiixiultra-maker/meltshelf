@@ -414,6 +414,10 @@ body.free #fxLocked{display:block}
 </script>
 
 <script src="./vendor/supabase/supabase.umd.js"></script>
+<!-- Vendored, pinned and self hosted for the same reason supabase is: this page
+     carries a signed-in session, and a third party script on a page like that
+     can read anything the page can. See vendor/gsap/NOTICE.md. -->
+<script src="./vendor/gsap/gsap.min.js"></script>
 <script type="module">
 import { requireAccount, db, signOut, saveShelfFx, configured, SETUP_HELP }
   from './src/auth.js';
@@ -990,6 +994,39 @@ async function build() {
      that was still half empty. */
   const xs = jars.map((j) => j.position.x);
   for (const j of jars) prepareJar(j, xs);
+  arriveJars();
+}
+
+/**
+ * Set the jars down one at a time.
+ *
+ * A shelf that pops into existence fully stocked gives away that it is a list
+ * being rendered. They come down onto their shelves instead, top shelf first
+ * and left to right, which is the order they were put there in.
+ *
+ * POSITION, not opacity. Fading a jar in behind glass looks like a rendering
+ * fault; a jar that drops has somewhere it came from. Reduced motion gets the
+ * shelf immediately with none of it.
+ */
+function arriveJars() {
+  if (!window.gsap) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const ordered = [...jars].sort((a, b) =>
+    (b.position.y - a.position.y) || (a.position.x - b.position.x));
+
+  gsap.from(ordered.map((j) => j.position), {
+    y: '+=46',
+    duration: 0.72,
+    ease: 'back.out(1.1)',
+    stagger: 0.055,
+  });
+  gsap.from(ordered.map((j) => j.scale), {
+    x: 0.88, y: 0.88, z: 0.88,
+    duration: 0.72,
+    ease: 'back.out(1.6)',
+    stagger: 0.055,
+  });
 }
 
 /**
@@ -1213,7 +1250,7 @@ function applyTier() {
 
   // a card for a jar that just left the shelf must leave with it
   if (picked && !p && (picked.bay === 'wishlist' || picked.bay === 'prototype')) {
-    card.classList.add('off'); picked = null;
+    card.classList.add('off'); picked = null; setDoorOpen(false);
   }
 }
 
@@ -1231,7 +1268,7 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
   ray.setFromCamera(ptr, camera);
   // locked bays are not clickable: raycast only what is on the shelf
   const hit = ray.intersectObjects(jars.filter((j) => j.visible), true)[0];
-  if (!hit) { card.classList.add('off'); picked = null; return; }
+  if (!hit) { card.classList.add('off'); picked = null; setDoorOpen(false); return; }
   let root = hit.object;
   while (root.parent && !root.userData.item) root = root.parent;
   show(root.userData.item);
@@ -1311,6 +1348,8 @@ function show(it) {
   paintListing(it);
 
   card.classList.remove('off');
+  cardIn();
+  setDoorOpen(true);          // you are reaching in
   // Re-synced to the jar just picked, and measured after the card is visible:
   // a display:none subtree measures as zero.
   syncOpenUI(jarFor(it));
@@ -1412,6 +1451,47 @@ const jarFor = (it) => jars.find((j) => j.userData.item === it);
    write, so they are escaped on the way into the card rather than trusted. */
 const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
   .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/* =====================================================================
+   THE DOOR
+
+   The case shipped with a hinge, a handle and a swing, and nothing that ever
+   called setDoor. It was glass that could open and never did.
+
+   It opens when you reach in for a jar and shuts when you step back. There is
+   no separate control, because there is nothing a person would want to say
+   with one that picking a jar does not already say.
+
+   A door has weight, so the two directions are not one curve reversed:
+   back.out lets it swing slightly past and settle, power2.in lets it fall
+   shut. GSAP overwrites a running tween on the same target, so a fast double
+   tap cannot leave two of them fighting over one hinge.
+   ===================================================================== */
+const doorState = { t: 0 };
+function setDoorOpen(open) {
+  const to = open ? 1 : 0;
+  if (doorState.t === to) return;
+  if (!window.gsap || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    doorState.t = to; CASE_RT.setDoor(to); return;
+  }
+  gsap.to(doorState, {
+    t: to,
+    duration: open ? 0.62 : 0.44,
+    ease: open ? 'back.out(1.4)' : 'power2.in',
+    overwrite: true,
+    onUpdate: () => CASE_RT.setDoor(doorState.t),
+  });
+}
+
+/* The card is CSS-transitioned in the stylesheet, which is cheap and fine.
+   What CSS cannot do is the small overshoot that makes it read as handled
+   rather than shown, so it borrows the door's curve. */
+function cardIn() {
+  if (!window.gsap || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  gsap.fromTo(card, { x: 18, opacity: 0 },
+    { x: 0, opacity: 1, duration: 0.42, ease: 'back.out(1.2)',
+      overwrite: true, clearProps: 'transform,opacity' });
+}
 
 function syncOpenUI(jar) {
   const isOpen = OPENER.isOpen(jar);
