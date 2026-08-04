@@ -1006,8 +1006,10 @@ async function build() {
      depends on the neighbours: the lid goes toward whichever side has more
      room. Done inside the loop, every jar would be deciding against a shelf
      that was still half empty. */
-  const xs = jars.map((j) => j.position.x);
-  for (const j of jars) prepareJar(j, xs);
+  /* Neighbours are per SHELF. A cap goes toward whichever side has more room,
+     and on a plank every jar was a neighbour because there was one row. In a
+     case a jar two shelves down is not in the way of anything. */
+  for (const j of jars) prepareJar(j, shelfNeighbours(j));
   arriveJars();
 }
 
@@ -1165,6 +1167,13 @@ async function buildOne(item, tier) {
 const FOCUS_MAX = IS_PHONE ? 1 : 3;
 const focusQueue = [];
 
+/** The x positions of the jars sharing this one's shelf, excluding itself. */
+function shelfNeighbours(jar) {
+  return jars
+    .filter((j) => j !== jar && Math.abs(j.position.y - jar.position.y) < 1)
+    .map((j) => j.position.x);
+}
+
 /** Swap one jar for a rebuild of itself at another tier, in place. */
 async function retier(item, tier) {
   const old = jars.find((j) => j.userData.item === item);
@@ -1183,14 +1192,15 @@ async function retier(item, tier) {
   jars[i] = fresh;
   scene.add(fresh);
 
-  // A rebuilt jar is a NEW jar, and a new jar is shut. Without this, a jar
-  // that changed texture tier while open snapped its own lid back on.
-  OPENER.adopt(old, fresh);
   old.userData.sculptRuntime.dispose();
 
-  // Cap rest positions depend on the neighbours, so they are recomputed
-  // against the row as it stands rather than copied off the jar being retired.
-  prepareJar(fresh, jars.map((j) => j.position.x));
+  /* ORDER MATTERS AND IT BIT. prepareJar reads the lid's home position off the
+     lid, so it has to run while the jar is still shut. Adopting first opened
+     the jar and then recorded the OPEN lid as home, which is why some caps lay
+     flat through their own jar and why closing one left its lid hanging in
+     mid air beside it. */
+  prepareJar(fresh, shelfNeighbours(fresh));
+  OPENER.adopt(old, fresh);
   return fresh;
 }
 

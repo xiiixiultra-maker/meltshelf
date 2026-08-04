@@ -74,6 +74,17 @@ export function capRestFor(x, yaw, otherXs) {
  */
 export function prepareJar(jar, otherXs) {
   jar.userData.lid = jar.getObjectByName('lid-assembly');
+  /* SHUT IT FIRST. capHome is the lid's position on the jar, and it is read
+     off the lid, so measuring a jar whose lid has already moved records the
+     DISPLACED position as home. Everything after that is wrong in both
+     directions: opening adds the offset to an already-offset lid, which is a
+     cap lying flat through its own jar, and closing returns the lid to where
+     it was parked instead of onto the jar.
+
+     It could not happen while jars were built once and never rebuilt. It
+     started happening the moment a jar could be rebuilt at another texture
+     tier while it was open. */
+  jar.userData.sculptRuntime?.setOpen(0);
   if (jar.userData.lid) jar.userData.capHome = jar.userData.lid.position.clone();
   jar.userData.rest = capRestFor(jar.position.x, jar.rotation.y, otherXs);
 }
