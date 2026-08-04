@@ -209,7 +209,37 @@ body.free .bay.wish .lock,body.free .bay.proto .lock{display:block}
 body.free #fxBody{opacity:.34;pointer-events:none}
 #fxLocked{display:none;font-size:11px;line-height:1.55;color:var(--orange);margin-top:8px}
 body.free #fxLocked{display:block}
-@media (max-width:820px){#fx{display:none}}
+/* THE CONTROLS USED TO BE DELETED HERE.
+       @media (max-width:820px){#fx{display:none}}
+   One line, and the trim and smoke controls did not exist on any phone. The
+   report was "I could not find it", which is exactly what a hidden panel
+   produces: not a missing feature, a feature the desktop can see and the phone
+   cannot.
+
+   On a narrow screen it is a sheet that slides up from a labelled button
+   instead, because a floating panel there would cover the shelf it adjusts. */
+/* Above the orbit hint, not on top of it. */
+#fxBtn{position:fixed;left:16px;bottom:52px;z-index:8;display:none;
+  align-items:center;gap:7px;background:var(--pane);color:var(--l1);
+  border:1px solid var(--line);border-radius:999px;padding:11px 16px;
+  font:inherit;font-size:12px;cursor:pointer;
+  box-shadow:0 6px 24px rgba(0,0,0,.5)}
+#fxBtn i{width:9px;height:9px;border-radius:50%;background:var(--l3);
+  transition:box-shadow .3s var(--ease),background .3s var(--ease)}
+#fxBtn.lit i{background:var(--green);box-shadow:0 0 10px 1px var(--greenGlow)}
+#fxClose{display:none;position:absolute;right:12px;top:12px;background:none;
+  border:0;color:var(--l2);font:inherit;font-size:20px;line-height:1;
+  padding:4px 8px;cursor:pointer}
+
+@media (max-width:820px){
+  #fxBtn{display:flex}
+  #fxClose{display:block}
+  #fx{left:0;right:0;bottom:0;width:auto;border-radius:14px 14px 0 0;
+      border-left:0;border-right:0;border-bottom:0;padding:16px 18px 24px;
+      transform:translateY(102%);transition:transform .34s var(--ease);
+      max-height:72vh;overflow-y:auto}
+  #fx.open{transform:none}
+}
 
 /* ------------------------------------------------------------ the card */
 #card{position:fixed;right:16px;top:106px;width:310px;z-index:12;background:var(--pane);
@@ -283,7 +313,11 @@ body.free #fxLocked{display:block}
   <a class="primary" href="./">See what premium adds</a>
 </div>
 
+<button id="fxBtn" type="button" aria-controls="fx" aria-expanded="false">
+  <i></i>Case lighting
+</button>
 <div id="fx">
+  <button id="fxClose" type="button" aria-label="Close">&times;</button>
   <div class="fx-head"><b>Shelf lighting</b><em id="fxTier"></em></div>
   <div id="fxBody">
     <div class="fx-row">
@@ -391,6 +425,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createResinCultureJarModel, createJarLights, CONTENTS, LIGHTING, DIM }
   from './src/createJarModel.js';
 import { createSleeveJarModel } from './src/createSleeveJarModel.js';
+import { createDisplayCase } from './src/displayCase.js';
 import { wrapGeom, bandAspect, maxCanvasWidth } from './src/stitchWrap.js';
 import { makeCharrasPack } from './src/labelArtCharras.js';
 import { makeTemplatePack, CONFIG } from './src/labelArtTemplate.js';
@@ -458,99 +493,120 @@ const BAY_ORDER = ['rotation', 'wishlist', 'prototype'];
    (SLEEVE_DIM.R 25.5), so the 46 this briefly used had neighbouring jars
    intersecting by 5mm on every phone. Anything below 53 puts glass through
    glass. */
-const PITCH   = IS_PHONE ? 56  : 68;   // centre to centre between jars
-const BAY_GAP = IS_PHONE ? 62  : 104;  // between bays, room for a divider
-const EDGE    = IS_PHONE ? 40  : 76;   // plank beyond the outermost jar
+/* Jar spacing lives in the case now, which derives it from its own interior
+   width and clamps it so neighbours cannot intersect. These were the plank's
+   numbers and one of them, a 46mm pitch against a 51mm jar, put glass through
+   glass on every phone for an hour this morning. */
 
-let SHELF = { centres: {}, extent: 0, half: 0 };
+/* SHELF held the bay centres so the captions could find them. Both are gone:
+   the case knows where its own shelves are. */
+/**
+ * Put every jar on its shelf.
+ *
+ * The CASE decides where a jar stands, because the case is the thing that
+ * knows its own walls. This used to march a cursor along an imaginary row,
+ * which is exactly why the row could silently grow wider than the frame.
+ *
+ * A section keeps its shelf whether or not it holds anything. An empty wish
+ * list shelf says "this is where wish list jars go"; the old layout deleted
+ * bays that were empty, so a bay you had not used yet did not appear to exist.
+ */
 function layout(rows) {
   const byBay = {};
   for (const r of rows) (byBay[r.bay] ||= []).push(r);
 
-  // Only bays that hold something take up room. An empty wish list should not
-  // push the prototype bay off to the right of an otherwise short shelf.
-  const present = BAY_ORDER.filter((b) => byBay[b] && byBay[b].length);
-  const widthOf = (b) => (byBay[b].length - 1) * PITCH;
-  const total = present.reduce((a, b) => a + widthOf(b), 0)
-              + BAY_GAP * Math.max(0, present.length - 1);
-
   const out = [];
-  const centres = {};
-  let cursor = -total / 2;                       // the row straddles x = 0
-  for (const bay of present) {
-    const w = widthOf(bay);
-    byBay[bay].forEach((r, i) => out.push({ ...r, x: cursor + i * PITCH }));
-    centres[bay] = cursor + w / 2;
-    cursor += w + BAY_GAP;
+  for (const bay of BAY_ORDER) {
+    const list = byBay[bay] || [];
+    list.forEach((r, i) => {
+      const p = CASE_RT.slotFor(bay, i, list.length);
+      out.push({ ...r, x: p.x, y: p.y, z: p.z });
+    });
   }
-
-  SHELF = { centres, extent: total, half: total / 2 };
   return out;
 }
 
-/** Cut the plank and frame the camera to whatever the row turned out to be. */
+/**
+ * Frame the case, and light its shelves.
+ *
+ * Pure framing now. The old version re-cut a plank and rebuilt dividers every
+ * time the contents changed, and moved the camera with them, so a jar shrank
+ * as the collection grew. The case is fixed: this depends on the window and
+ * nothing else.
+ */
 function fitShelf() {
-  const halfWidth = SHELF.half + EDGE;
-  plank.geometry.dispose();
-  plank.geometry = new THREE.BoxGeometry(halfWidth * 2, 8, 130);
-  plank.position.set(0, -4, 0);
-
-  // Dividers go in the MIDDLE of each gap between adjacent bays, which is
-  // only knowable once the bays have been placed.
-  for (const d of dividers) { scene.remove(d); d.geometry.dispose(); }
-  dividers.length = 0;
-  const present = BAY_ORDER.filter((b) => SHELF.centres[b] !== undefined);
-  for (let i = 0; i < present.length - 1; i++) {
-    const a = SHELF.centres[present[i]], b = SHELF.centres[present[i + 1]];
-    const d = new THREE.Mesh(
-      new THREE.BoxGeometry(1.5, 46, 46),
-      new THREE.MeshStandardMaterial({ color: new THREE.Color('#1B1F25'), roughness: .8 }),
-    );
-    d.position.set((a + b) / 2, 23, 0);
-    d.receiveShadow = true; d.castShadow = true;
-    scene.add(d);
-    dividers.push(d);
-  }
-
-  /* Pull back until the whole row fits, on BOTH axes.
-
-     The half-angles: vertical is the fov, horizontal is the fov scaled by the
-     aspect, which is why a narrow window has to stand further off.
-
-     There used to be a Math.max(0.2, tanH) here. On a 393 x 852 phone tanH is
-     0.141, so the floor made the distance SMALLER than the one that fits, and
-     it could only ever fire below an aspect of about 0.65: on a phone in
-     portrait and nowhere else. The guard it was meant to be is a guard against
-     a zero aspect, which is what the tiny epsilon below does without lying
-     about the geometry. */
+  const b = CASE_RT.bounds;
   const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
   const tanV = Math.tan(halfFov);
   const tanH = tanV * Math.max(0.05, camera.aspect);
 
-  const needX = halfWidth + 30;                 // half the plank, plus air
-  const needY = 34;                             // a jar is about 42mm tall
-  // Whichever axis runs out first decides. Fitting width alone cut the jars
-  // off top and bottom on a tall window, which is the same bug rotated.
+  // Framed against the OPEN width so the door swinging out does not push
+  // itself off the side of the window. A little air when shut is cheaper than
+  // a door you cannot watch open.
+  /* The canvas is the whole window, but the window is not all canvas: a header
+     and a status line sit over the top of it and a hint sits over the bottom,
+     so framing to the raw viewport puts the cornice under the nav and the
+     plinth under the hint. The margins are a FRACTION of the case rather than
+     a fixed 18mm, so they hold at every size. */
   const dist = THREE.MathUtils.clamp(
-    Math.max(needX / tanH, needY / tanV), 240, 4200);
-  // The lift is a FRACTION of the distance so the angle onto the shelf stays
-  // the same however far back it has to stand.
-  camera.position.set(0, dist * 0.30 + 24, dist);
-  /* Fog follows the fit. It exists to sink the far edges of a long shelf into
-     the dark, which is a fraction of the viewing distance, never a constant.
-     A constant is how the phone lost its entire shelf to the fog plane. */
-  if (scene.fog) {
-    scene.fog.near = dist * 0.75;
-    scene.fog.far  = dist * 2.15;
-  }
-  controls.target.set(0, 20, 0);
-  // 90 let a pinch-zoom end up INSIDE the shelf, among the jars, looking at
-  // the inside faces of everything.
-  controls.minDistance = 300;
+    Math.max((b.openW / 2 + b.w * 0.06) / tanH,
+             (b.h / 2 + b.h * 0.17) / tanV), 200, 4200);
+
+  // Only a little above centre. b.h * 0.08 tipped the case low enough in frame
+  // that its own base fell off the bottom of the window.
+  camera.position.set(0, b.cy + b.h * 0.04, dist + b.d);
+  controls.target.set(0, b.cy, 0);
+  controls.minDistance = 160;
   controls.maxDistance = dist * 2.2;
   controls.update();
-  FX.resize?.(halfWidth * 2);
+
+  // Fog follows the fit, or the case renders as flat background: a fixed
+  // 300..900 erased everything past 900mm, measured.
+  if (scene.fog) { scene.fog.near = dist * 0.75; scene.fog.far = dist * 2.4; }
+
+  /* SPILL LIGHTS ONTO EVERY SHELF. shelfFx spreads its nine along one row at
+     y = 10, which is right for a plank and wrong for a cabinet: inside the case
+     they would all sit under the bottom shelf. Three per shelf, under each
+     board's front lip.
+
+     decay 1, not 2. Inverse square in MILLIMETRES divides a jar 120mm away by
+     14400, so on an open plank it just works (jars sit 30mm from the strip) and
+     in a box it arrives as nothing. These are LED tape, not point sources. */
+  const rows = CASE_RT.shelves.map((sh) => sh.y);
+  const per = Math.max(1, Math.floor(FX.SPILL.length / rows.length));
+  FX.SPILL.forEach((l, i) => {
+    const row = rows[Math.min(rows.length - 1, Math.floor(i / per))];
+    const k = i % per;
+    l.position.set(
+      -CASE_RT.dims.innerW / 2 + (k + 0.5) * (CASE_RT.dims.innerW / per),
+      row - 16,
+      CASE_RT.dims.depth / 2 - 20,
+    );
+    l.decay = 1;
+    l.distance = 300;
+  });
+  paintCaseTrim();
 }
+
+/** Push shelfFx's colours onto the case's own strips. One colour authority. */
+function paintCaseTrim() {
+  CASE_RT.paintTrim(FX.TRIM.mode === 'off' ? null : FX.trimColourAt);
+  // shelfFx's own strip belongs to the plank that no longer exists, and
+  // paintTrim() re-shows it from the mode every time it runs.
+  FX.strip.visible = false;
+  /* SET, never multiplied. This was `l.intensity *= 9`, which is stable only
+     while something resets it first: shelfFx does that from its own paintTrim,
+     but only in rainbow mode. In solid or gradient mode nothing resets it, and
+     two calls to fitShelf, which a window resize is enough to cause, would
+     have compounded to 81 and then 729.
+
+     The 9 itself is real though: a box is a light trap with dark matte walls
+     and a back panel 129mm away, so it needs far more lamp than an open plank
+     to read as lit. 28 is shelfFx's own figure for the plank. */
+  const CASE_SPILL = 28 * 9;
+  for (const l of FX.SPILL) l.intensity = CASE_SPILL * FX.TRIM.glow;
+}
+
 
 /** A database row, as the scene wants it. */
 function rowToItem(e) {
@@ -636,16 +692,33 @@ scene.fog = new THREE.Fog('#08090B', 300, 900);
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-const camera = new THREE.PerspectiveCamera(34, innerWidth / innerHeight, 1, 3000);
-/* Framed to the whole roster: the jars occupy 318mm of plank and the midpoint
-   sits at x = -34, so the camera sits back far enough that a narrow window
-   still shows every bay. Same framing as shelf.html, solved there. */
-camera.position.set(-34, 150, 470);
+/* THE CASE. Built before anything is placed in it, because layout() asks it
+   where each jar goes and fitShelf frames the camera on it. All three sections
+   always exist in the geometry: a shelf you have not filled is the point, and
+   a shelf you have not unlocked still being visible is the honest way to show
+   that it is there. */
+const CASE = createDisplayCase({
+  THREE,
+  sections: BAY_ORDER,
+  labels: Object.fromEntries(BAY_ORDER.map((b) => [b, BAYS[b].label])),
+  slots: IS_PHONE ? 4 : 6,
+  compact: IS_PHONE,
+});
+scene.add(CASE);
+const CASE_RT = CASE.userData.caseRuntime;
+
+const camera = new THREE.PerspectiveCamera(34, innerWidth / innerHeight, 1, 6000);
+// A placeholder until fitShelf() frames the case properly, which it does as
+// soon as the roster is known.
+camera.position.set(0, 150, 640);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(-34, 20, 0);
+controls.target.set(0, CASE_RT.bounds.cy, 0);
 controls.enableDamping = true; controls.dampingFactor = .07;
 controls.minDistance = 300; controls.maxDistance = 2600;
-controls.maxPolarAngle = Math.PI * 0.52;      // never below the plank
+// Never below the case, and never so high that you are looking at the top of
+// the carcass instead of into it.
+controls.maxPolarAngle = Math.PI * 0.52;
+controls.minPolarAngle = Math.PI * 0.16;
 
 // A 2048 shadow map is 33.6 MB for one light and is re-rendered every frame.
 // This is a soft contact shadow under a jar, not an edge anybody studies.
@@ -654,14 +727,9 @@ const fill = new THREE.DirectionalLight(0xbcd0e0, 0.22);
 fill.position.set(120, 60, 140);
 scene.add(fill);
 
-// the plank stays in every state, including empty
-const plank = new THREE.Mesh(
-  new THREE.BoxGeometry(560, 8, 130),
-  new THREE.MeshStandardMaterial({ color: new THREE.Color('#15181D'), roughness: .74, metalness: .12 }),
-);
-plank.position.set(-34, -4, 0);
-plank.receiveShadow = true;
-scene.add(plank);
+/* The plank used to stand here. It was re-cut on every layout change, and the
+   camera was re-solved to whatever width it came out at, which is why a
+   growing collection rendered as shrinking jars. The case replaced it. */
 
 /* The lights and the smoke, shared with shelf.html so the two cannot drift.
    Built here, before any jar exists, because the shelf is lit whether or not
@@ -999,7 +1067,8 @@ async function buildOne(item, tier) {
       // difference is invisible at shelf size.
       anisotropy: Math.min(renderer.capabilities.getMaxAnisotropy(), tier.aniso),
     });
-    jar.position.set(item.x, 0, 0);
+    // y is the shelf the case put it on; z is the case's own depth.
+    jar.position.set(item.x, item.y ?? 0, item.z ?? 0);
     jar.rotation.y = (Math.random() - 0.5) * 0.5;
     jar.userData.item = item;
 
@@ -1084,39 +1153,19 @@ async function unfocusJar() {
 // narrow window has to stand further back to hold the same row.
 addEventListener('resize', () => { if (jars.length) fitShelf(); });
 
-/* ------------------------------------------------------- bay captions */
-const bayEls = {};
-for (const [k, b] of Object.entries(BAYS)) {
-  const el = document.createElement('div');
-  el.className = 'bay ' + b.cls;
-  el.innerHTML = `<b>${b.label}</b><span>${b.sub}</span><span class="lock">Premium bay</span>`;
-  document.body.appendChild(el);
-  bayEls[k] = el;
-}
-const v = new THREE.Vector3();
-function placeCaptions() {
-  for (const [k, b] of Object.entries(BAYS)) {
-    // The bay's REAL centre, which layout() worked out from what is in it.
-    // Since the plank started being cut to fit, BAYS.x has been a caption
-    // pointing at where a bay used to be. A bay holding nothing takes up no
-    // plank, so it has no centre to label and the caption stays hidden.
-    const cx = SHELF.centres[k];
-    const el = bayEls[k];
-    if (cx === undefined) { el.style.opacity = 0; continue; }
-    v.set(cx, -10, 58).project(camera);
-    const behind = v.z > 1;
-    el.style.opacity = behind ? 0 : 1;
-    // Clamped into the window. These are DOM elements placed from a projected
-    // 3-D point, so a bay off the left of the frame put its label at a
-    // negative x and the browser cut the text in half. A caption pinned to the
-    // edge still says which bay it belongs to; half a word says nothing.
-    const w = el.offsetWidth || 120, h = el.offsetHeight || 16;
-    const x = (v.x * 0.5 + 0.5) * innerWidth;
-    const y = (-v.y * 0.5 + 0.5) * innerHeight;
-    el.style.left = Math.max(8, Math.min(innerWidth - w - 8, x)) + 'px';
-    el.style.top = Math.max(8, Math.min(innerHeight - h - 8, y)) + 'px';
-  }
-}
+/* ------------------------------------------------- the captions are gone
+
+   Three DOM elements used to be created here and positioned every frame by
+   projecting a world point into screen space. They drifted during the camera
+   tween, needed clamping to stay inside the window, and were still sliced in
+   half by the edge on a phone.
+
+   The case carries a label plate on the front of every shelf. Geometry, not an
+   overlay: nothing to position, nothing to clamp, and it cannot disagree with
+   the shelf it names. placeCaptions survives as an empty call so the render
+   loop does not have to know that it went. */
+function placeCaptions() { /* the case labels itself */ }
+
 
 /* =====================================================================
    TIER STATE
@@ -1283,6 +1332,9 @@ const fxClock = new THREE.Clock();
   // Clamped: a backgrounded tab returns one enormous delta on the frame it
   // wakes, which would teleport every puff to the ceiling at once.
   FX.step(Math.min(0.05, fxClock.getDelta()));
+  // A rainbow trim advances its phase every frame, so the case's strips have
+  // to be repainted from it or they freeze on the colour they were built with.
+  if (FX.TRIM.mode === 'rainbow' && FX.TRIM.glow > 0.001) paintCaseTrim();
   controls.update();
   placeCaptions();
   renderer.render(scene, camera);
@@ -1415,6 +1467,7 @@ function fxSaved(text, ok) {
   el.classList.toggle('ok', !!ok);
 }
 function fxTouched() {
+  syncFxBtn();          // the button dot follows the shelf, always
   if (!state.premium) return;          // the server would refuse anyway
   clearTimeout(fxSaveTimer);
   fxSaved('saving');
@@ -1450,6 +1503,24 @@ q('cA').addEventListener('input', (e) => { FX.TRIM.a = e.target.value; FX.paintT
 q('cB').addEventListener('input', (e) => { FX.TRIM.b = e.target.value; FX.paintTrim(); fxTouched(); });
 q('tSpeed').addEventListener('input', (e) => { FX.TRIM.speed = +e.target.value; fxTouched(); });
 q('tGlow').addEventListener('input', (e) => { FX.TRIM.glow = +e.target.value; FX.paintTrim(); fxTouched(); });
+/* The sheet. Only does anything on a narrow screen, where the CSS gives #fx a
+   transform to undo. On a desktop the panel is always visible and the button is
+   display:none, so this is inert rather than conditional. */
+function setFxOpen(open) {
+  q('fx').classList.toggle('open', open);
+  q('fxBtn').setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+q('fxBtn').addEventListener('click', () => {
+  setFxOpen(!q('fx').classList.contains('open'));
+});
+q('fxClose').addEventListener('click', () => setFxOpen(false));
+
+/** The dot lights when anything is actually on, so the button reports the
+ *  state it controls instead of just sitting there. */
+function syncFxBtn() {
+  q('fxBtn').classList.toggle('lit', FX.TRIM.mode !== 'off' || FX.SMOKE.on);
+}
+
 q('smokeBtn').addEventListener('click', () => {
   if (!state.premium) return;
   FX.SMOKE.on = !FX.SMOKE.on;
@@ -1462,6 +1533,7 @@ q('smokeAmt').addEventListener('input', (e) => { FX.SMOKE.amount = +e.target.val
 
 /** Push saved state into the controls, so the panel and the shelf agree. */
 function paintFxPanel() {
+  syncFxBtn();
   const t = FX.TRIM;
   for (const b of q('trimSeg').children) b.classList.toggle('on', b.dataset.mode === t.mode);
   q('rowSolid').hidden = t.mode !== 'solid';
