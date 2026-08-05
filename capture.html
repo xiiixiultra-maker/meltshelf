@@ -1710,7 +1710,21 @@ $('generate').addEventListener('click', async () => {
   // stitch blocks the main thread.
   await new Promise((r) => setTimeout(r, 16));
   try {
-    buildWrap();
+    /* buildWrap RETURNS whether it managed to build one, and this used to
+       throw the answer away. When it failed, CAP.wrap stayed null and the next
+       line went to createImageBitmap(null), so a legible reason turned into
+       "Could not generate: Failed to execute createImageBitmap". */
+    if (!buildWrap()) {
+      out.textContent = CAP.wrapBlank
+        ? 'The wrap came out blank on this device, so there is nothing to put '
+          + 'on the jar. That is usually the browser refusing a canvas '
+          + TARGET.w + ' pixels wide.'
+        : CAP.route === 'artwork'
+          ? 'No label image loaded yet.'
+          : 'Not enough outside shots yet: ' + CAP.outside.length + ' of ' + CAP.min + '.';
+      btn.disabled = false;
+      return;
+    }
     const art = await createImageBitmap(CAP.wrap);
     const base = CAP.bottom ? await createImageBitmap(CAP.bottom) : null;
     const cap = CAP.top ? await createImageBitmap(CAP.top) : null;
@@ -1726,8 +1740,16 @@ $('generate').addEventListener('click', async () => {
       // The COUNT TAKEN, not a constant. There is no fixed number any more,
       // and the old one printed "undefined outside shots".
       : 'Generated from ' + CAP.outside.length + ' outside shots and one inside shot.')
-      + (CAP.top ? ' Top print applied.' : '')
-      + (CAP.bottom ? ' Base print applied.' : '');
+      + (CAP.top ? ' Top print applied.' : ' No top print.')
+      + (CAP.bottom ? ' Base print applied.' : ' No base print.')
+      /* WHAT WENT ON THE JAR, in pixels. A jar that comes out looking generic
+         is either a jar with no bands or a jar with blank ones, and those need
+         opposite fixes. Printing the sizes means the answer is on the screen
+         instead of being guessed at afterwards. */
+      + (CAP.bands
+          ? ' Bands ' + CAP.bands.body.width + 'x' + CAP.bands.body.height
+            + ' and ' + CAP.bands.skirt.width + 'x' + CAP.bands.skirt.height + '.'
+          : ' One band ' + CAP.wrap.width + 'x' + CAP.wrap.height + '.');
   } catch (e) {
     out.textContent = 'Could not generate: ' + e.message;
   } finally {
@@ -1899,7 +1921,8 @@ $('save').addEventListener('click', async () => {
         + 'the reason. <a href="./app.html" style="color:var(--green)">Open your shelf</a>';
     } else {
       out.innerHTML = 'Saved to your shelf as <b style="color:var(--green)">'
-        + escText(name) + '</b>. Artwork stored (' + parts.join(', ') + '). '
+        + escText(name) + '</b>. Artwork stored: ' + parts.join(', ') + '. '
+        + 'Shape ' + (CAP.shape || 'tall') + '. '
         + 'It is private until you list it. '
         + '<a href="./app.html" style="color:var(--green)">Open your shelf</a>';
     }
