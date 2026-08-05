@@ -40,8 +40,29 @@
  * @param {number}  [o.slots]         jars a shelf should hold before it compresses
  * @param {boolean} [o.compact]       phone proportions
  */
-export function createDisplayCase({ THREE, sections, labels = {}, slots = 6, compact = false }) {
+export function createDisplayCase({ THREE, sections, labels = {}, counts = {},
+                                   slots = 4, compact = false }) {
   const S = Math.max(1, sections.length);
+
+  /* FOUR TO A SHELF, AND A SECTION THAT NEEDS MORE GETS MORE SHELVES.
+
+     The previous rule divided the shelf width by however many jars a section
+     held, so past four the pitch fell below the jar itself: six on a phone
+     shelf came out at 38.7mm against a 51mm jar, which is glass through glass
+     by 12mm, and every jar added made it worse.
+
+     A cabinet does not squeeze a row tighter, it grows. Each section gets as
+     many boards as it needs at four a board, and the case is as tall as the
+     sum of them. So the spacing never changes, a jar is always the same size,
+     and a section that is filling up says so by taking more of the case. */
+  const rowsFor = (bay) => Math.max(1, Math.ceil((counts[bay] || 0) / slots));
+  const ROWS = sections.map(rowsFor);
+  const TOTAL_ROWS = ROWS.reduce((a, b) => a + b, 0);
+  /* The widest jar this case has to hold, so spacing can be checked against
+     the thing being spaced rather than against a number somebody typed.
+     SLEEVE_DIM.R is 25.5, so 51 across, plus a millimetre so neighbours do not
+     touch exactly. */
+  const JAR_D = 52;
 
   /* ── proportions ───────────────────────────────────────────────────────
      Driven by the jar, not chosen. A jar is 52mm across and 42mm tall, and
@@ -61,7 +82,7 @@ export function createDisplayCase({ THREE, sections, labels = {}, slots = 6, com
     plateH:  compact ? 13 : 15,          // the label strip on a shelf's edge
   };
   D.innerW = D.slotW * slots;
-  D.innerH = S * D.clearH;
+  D.innerH = TOTAL_ROWS * D.clearH;
   D.outerW = D.innerW + D.wall * 2;
   D.outerH = D.innerH + D.wall * 2 + D.reveal;
   D.outerD = D.depth + D.wall;
@@ -160,40 +181,51 @@ export function createDisplayCase({ THREE, sections, labels = {}, slots = 6, com
      sections[0] is the top shelf because that is where the eye lands and the
      first section is the one that matters. A free account has one section, and
      one shelf in a one-shelf case has to look intended rather than lonely,
-     which is why the case height follows the section COUNT. */
+     which is why the case height follows the ROW count rather than the section
+     count: a section with nine jars owns three boards and takes three boards'
+     worth of case. */
   const shelves = [];
+  /* Boards are laid out from the BOTTOM up so the arithmetic is a single
+     running cursor, then sections read top-down because section 0 is the one
+     the eye lands on. A section owning three boards owns three consecutive
+     ones, and its label goes on the lowest of them. */
+  const rowY = [];
+  {
+    let cursor = 0;
+    for (let i = S - 1; i >= 0; i--) {
+      const ys = [];
+      for (let r = 0; r < ROWS[i]; r++) { ys.push(cursor); cursor += D.clearH; }
+      rowY[i] = ys;                      // lowest board first within a section
+    }
+  }
+
   for (let i = 0; i < S; i++) {
     const bay = sections[i];
-    // Counting down from the top: section 0 gets the highest board.
-    const y = (S - 1 - i) * D.clearH;
+    const y = rowY[i][0];
     const g = new THREE.Group();
     g.name = 'shelf-' + bay;
     g.position.set(0, y, 0);
     root.add(g);
 
-    // The board itself. The lowest section stands on the case floor, so it
-    // gets no board of its own: it would be a board lying on a board.
-    if (i < S - 1 || S === 1) {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(D.innerW, D.board, D.depth), glassShelf);
-      b.position.set(0, -D.board / 2, 0);
-      // Neither. Glass does not throw a solid shadow onto the shelf below, and
-      // a nearly transparent surface receiving one just muddies it.
-      b.receiveShadow = false; b.castShadow = false;
-      b.renderOrder = 2;
-      b.name = 'shelf-board';
-      g.add(b);
-
-      /* The front edge, and it is doing the work. A sheet of glass seen face
-         on is almost nothing; you know it is there because its edge catches
-         light. Metal rather than glass so it always reads, and it doubles as
-         the lip the label plate is screwed to. */
-      const lip = new THREE.Mesh(new THREE.BoxGeometry(D.innerW, D.board, 1.6), metal);
-      lip.position.set(0, -D.board / 2, D.depth / 2 - 0.8);
-      lip.name = 'shelf-lip';
-      g.add(lip);
+    // Every row above the case floor gets a board. The lowest row of the
+    // lowest section stands on the floor itself, so it gets none: a board
+    // lying on a board.
+    for (let r = 0; r < ROWS[i]; r++) {
+      const ry = rowY[i][r];
+      if (ry <= 0.01) continue;
+      const b2 = new THREE.Mesh(new THREE.BoxGeometry(D.innerW, D.board, D.depth), glassShelf);
+      b2.position.set(0, ry - D.board / 2, 0);
+      b2.receiveShadow = false; b2.castShadow = false;
+      b2.renderOrder = 2;
+      b2.name = 'shelf-board';
+      root.add(b2);
+      const lip2 = new THREE.Mesh(new THREE.BoxGeometry(D.innerW, D.board, 1.6), metal);
+      lip2.position.set(0, ry - D.board / 2, D.depth / 2 - 0.8);
+      lip2.name = 'shelf-lip';
+      root.add(lip2);
     }
 
-    shelves.push({ bay, y, group: g, label: null });
+    shelves.push({ bay, y, rows: rowY[i], group: g, label: null });
   }
 
   /* ── label plates ──────────────────────────────────────────────────────
@@ -486,18 +518,42 @@ export function createDisplayCase({ THREE, sections, labels = {}, slots = 6, com
   function slotFor(bay, index, count) {
     const sh = shelves.find((s) => s.bay === bay) || shelves[0];
     const n = Math.max(1, count);
-    const pitch = n <= slots ? D.slotW : D.innerW / n;
-    const span = (n - 1) * pitch;
+
+    /* A SHELF HAS DEPTH, AND IT WAS NOT BEING USED.
+       This divided the width by however many jars there were, so past `slots`
+       the pitch fell below the jar itself: at six jars on a phone shelf it was
+       38.7mm against a 51mm jar, which is glass through glass by 12mm, and it
+       got worse with every jar added. Exactly the same mistake as the 46mm
+       phone pitch, one layer up.
+
+       A real cabinet does not crush a row, it starts a second one behind. The
+       interior is 132mm deep and a jar is 51mm across, so two rows fit with
+       room between them, and the back row is offset half a pitch so its jars
+       sit in the gaps of the front row instead of hiding behind them. */
+    /* Four to a board, filling the section's TOP board first and working
+       down, because a section fills the way you read it. The pitch is a
+       constant, so a jar never changes size and never touches its neighbour. */
+    const ys = sh.rows;                        // lowest board first
+    const row = Math.min(ys.length - 1, Math.floor(index / slots));
+    const inRow = index - row * slots;
+    const rowCount = Math.min(slots, n - row * slots);
+    const pitch = D.slotW;
+    const span = (rowCount - 1) * pitch;
+
     return {
-      x: -span / 2 + index * pitch,
-      y: sh.y,
+      x: -span / 2 + inRow * pitch,
+      // row 0 is the section's TOP board, which is the last entry in ys.
+      y: ys[ys.length - 1 - row],
       z: 0,
       pitch,
+      scale: 1,
     };
   }
 
   root.userData.caseRuntime = {
     dims: D,
+    counts,          // what it was built for, so a caller can tell if it changed
+    rows: ROWS,
     shelves,
     setDoor,
     paintTrim,

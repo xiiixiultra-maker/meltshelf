@@ -229,17 +229,61 @@ function applyGain(cv, gain) {
  * @returns {HTMLCanvasElement} the wrap, `width` by `width / aspect`
  */
 export function stitchWrap(shots, opts = {}) {
-  const { width = 4096, aspect = 7.194, match = true, deshade = true } = opts;
+  /* `hero` exists so the two arrangements can be MEASURED against each other
+     on the same photographs rather than argued about. It is on in production. */
+  const { width = 4096, aspect = 7.194, match = true, deshade = true,
+          hero = true } = opts;
   if (!shots?.length) throw new Error('stitchWrap: no shots');
 
   const N = shots.length;
   const H = Math.round(width / aspect);
-  const share = width / N;                       // columns per shot, no overlap
-  const bleed = Math.round(share * OVERLAP);     // extra columns on each side
-  const stripW = Math.round(share) + bleed * 2;
-  const arc = (2 * Math.PI / N) * (1 + 2 * OVERLAP);
 
-  const strips = shots.map((s) => unwrapStrip(s.src, s.rect, arc, stripW, H));
+  /* ---- THE FIRST SHOT IS THE ONE THAT MATTERS ----------------------------
+
+     Every shot used to get an identical 360/N of the jar, and shot one was
+     laid down starting at column zero. Both are wrong for how these are
+     actually taken.
+
+     The first shot is the money shot. It is the one framed deliberately, in
+     focus, with the front of the label square to the lens; the rest are turns,
+     taken faster, at whatever angle the hand happened to stop at. Treating six
+     shots as six equals throws away the one that was aimed.
+
+     Worse, starting at column zero put the wrap's own seam through it. Column
+     zero is where the printed band is cut so the label splits when the lid
+     turns, so the best photograph on the jar was the one with a cut through it.
+
+     So: the hero is CENTRED in the wrap, at width/2, as far from that seam as
+     it is possible to be, and the others fill in around it in the order they
+     were taken, wrapping left and right until they meet behind. It also gets a
+     larger arc, because a wider slice of a sharp photograph beats a narrow
+     slice of a blurred one, and more weight where it overlaps a neighbour, so
+     the joins resolve toward it rather than away.
+
+     HERO_SHARE is deliberately moderate. Sampling further from a shot's centre
+     costs real sharpness, since the surface compresses as cos(t) toward the
+     silhouette, so this is a trade rather than free. At six shots it takes the
+     hero from 60 degrees to about 85 and each other shot to about 55. */
+  const HERO_SHARE = hero && N > 1 ? 1.55 : 1;   // hero's slice vs the others
+  const HERO_WEIGHT = hero ? 1.6 : 1;           // how hard it wins an overlap
+
+  const w = shots.map((_, i) => (i === 0 ? HERO_SHARE : 1));
+  const wTotal = w.reduce((a, b) => a + b, 0);
+  const shares = w.map((v) => (width * v) / wTotal);
+  const arcs = w.map((v) => ((2 * Math.PI * v) / wTotal) * (1 + 2 * OVERLAP));
+  const bleeds = shares.map((sh) => Math.round(sh * OVERLAP));
+  const stripWs = shares.map((sh, i) => Math.round(sh) + bleeds[i] * 2);
+
+  // Start columns, hero centred, everything else following it round.
+  const starts = new Array(N);
+  // Centred when the hero rule is on, at column zero when it is not, which is
+  // exactly what this did before.
+  starts[0] = hero ? Math.round(width / 2 - shares[0] / 2) : 0;
+  for (let i = 1; i < N; i++) {
+    starts[i] = Math.round(starts[i - 1] + shares[i - 1]);
+  }
+
+  const strips = shots.map((s, i) => unwrapStrip(s.src, s.rect, arcs[i], stripWs[i], H));
 
   // Order matters. Flatten each strip's own falloff FIRST, then match strips
   // to each other. Reversed, the matching would be computed from means that
@@ -281,16 +325,22 @@ export function stitchWrap(shots, opts = {}) {
   // and an otherwise black wrap, with no error anywhere.
   const acc = new Float32Array(width * H * 3);
   const wsum = new Float32Array(width);      // weight is per COLUMN, not per pixel
-  const ramp = Math.max(1, bleed * 2);
 
   for (let i = 0; i < N; i++) {
-    const x0 = Math.round(i * share) - bleed;
+    const stripW = stripWs[i];
+    const ramp = Math.max(1, bleeds[i] * 2);
+    const gain = i === 0 ? HERO_WEIGHT : 1;
+    const x0 = starts[i] - bleeds[i];
     const sd = strips[i].getContext('2d', { willReadFrequently: true })
       .getImageData(0, 0, stripW, H).data;
 
     for (let lx = 0; lx < stripW; lx++) {
       // Trapezoid: up over the leading bleed, flat, down over the trailing one.
-      const w = Math.min(1, lx / ramp) * Math.min(1, (stripW - lx) / ramp);
+      // The hero's is scaled up, so where two strips cover the same column the
+      // average leans toward the shot that was actually aimed. Weights are
+      // normalised at the end, so this changes the BALANCE of a seam and never
+      // its brightness.
+      const w = Math.min(1, lx / ramp) * Math.min(1, (stripW - lx) / ramp) * gain;
       if (w <= 0) continue;
       // The wrap is a loop, so a column hanging off either end belongs at the
       // other. Without this the join between the last shot and the first is

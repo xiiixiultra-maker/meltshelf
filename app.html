@@ -711,15 +711,37 @@ scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
    always exist in the geometry: a shelf you have not filled is the point, and
    a shelf you have not unlocked still being visible is the honest way to show
    that it is there. */
-const CASE = createDisplayCase({
-  THREE,
-  sections: BAY_ORDER,
-  labels: Object.fromEntries(BAY_ORDER.map((b) => [b, BAYS[b].label])),
-  slots: IS_PHONE ? 4 : 6,
-  compact: IS_PHONE,
-});
+/* The case is sized from WHAT IT HOLDS, four jars to a board, so it cannot be
+   built until the roster is known. One is put up empty so everything that
+   references it at module scope has something real, and build() replaces it
+   once the counts are in. */
+function makeCase(counts) {
+  return createDisplayCase({
+    THREE,
+    sections: BAY_ORDER,
+    labels: Object.fromEntries(BAY_ORDER.map((b) => [b, BAYS[b].label])),
+    counts,
+    slots: 4,
+    compact: IS_PHONE,
+  });
+}
+let CASE = makeCase({});
+let CASE_RT = CASE.userData.caseRuntime;
 scene.add(CASE);
-const CASE_RT = CASE.userData.caseRuntime;
+
+/** Rebuild the case for a roster, in place. */
+function fitCaseTo(rows) {
+  const counts = {};
+  for (const r of rows) counts[r.bay] = (counts[r.bay] || 0) + 1;
+  const same = BAY_ORDER.every((b) =>
+    Math.ceil((counts[b] || 0) / 4) === Math.ceil((CASE_RT.counts[b] || 0) / 4));
+  if (same) return;                       // same number of boards, nothing to do
+  scene.remove(CASE);
+  CASE.userData.caseRuntime.dispose();
+  CASE = makeCase(counts);
+  CASE_RT = CASE.userData.caseRuntime;
+  scene.add(CASE);
+}
 
 const camera = new THREE.PerspectiveCamera(34, innerWidth / innerHeight, 1, 6000);
 // A placeholder until fitShelf() frames the case properly, which it does as
@@ -994,6 +1016,7 @@ async function build() {
   // Charras needs its logo decoded before the label can bake
   LOGO = LOGO || await decodeImage('./assets/charras-logo.png');
   await document.fonts.ready;
+
 
   for (const item of ROSTER) {
     const jar = await buildOne(item, TIERS.shelf);
@@ -1729,7 +1752,13 @@ async function boot() {
   if (error) {
     q('status').textContent = 'Could not load your jars: ' + error.message;
   } else {
-    ROSTER = layout((data ?? []).map(rowToItem));
+    /* THE CASE FIRST, THEN THE PLACING. layout() asks the case where each jar
+       goes, so a case that grows a board AFTERWARDS leaves every position
+       computed against the shelf heights it used to have. That put four jars
+       on the wrong board and the fifth outside the cabinet entirely. */
+    const items = (data ?? []).map(rowToItem);
+    fitCaseTo(items);
+    ROSTER = layout(items);
   }
   EMPTY = ROSTER.length === 0;
 
