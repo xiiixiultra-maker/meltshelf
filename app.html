@@ -1299,12 +1299,35 @@ function applyTier() {
   // behind, sitting on a plank with nothing under it.
   if (!p) OPENER.closeAll(jars);
 
+  /* ARTWORK, COUNTED, ON THE STATUS LINE.
+     "Still nothing" has now cost several rounds, and every one of them was
+     spent working out WHICH jar was blank and why. There are three different
+     reasons a jar draws without its own label and they need opposite fixes:
+
+       built in   a pack jar like Rodman. Never had stored art, never will.
+       none       art_parts is empty. Nothing was uploaded. A capture problem.
+       failed     art_parts lists bands that would not download. A storage
+                  problem, and the card names the error.
+
+     A jar that was captured before the upload worked stays blank forever, so
+     a shelf can be a mix of all three and look like one broken feature.
+     Counting them says which, without tapping anything. */
+  const own = ROSTER.filter((it) => (it.artParts || []).length).length;
+  const wearing = ROSTER.filter((it) => it.artNote
+    && !it.artNote.startsWith('none') && !it.artNote.startsWith('stored but none')).length;
+  const failed = ROSTER.filter((it) => (it.artNote || '').startsWith('stored but none')).length;
+  const builtIn = ROSTER.filter((it) => it.key).length;
+  const blank = held - wearing - builtIn;
+
   q('status').textContent = held === 0
     ? 'No jars yet · rotation open'
     : `${shown} jar${shown === 1 ? '' : 's'} on the shelf`
       + (hidden ? ` · ${hidden} in locked bays` : '')
       + (p ? ' · rotation + wish list + prototype'
-           : ' · rotation open · wish list + prototype locked');
+           : ' · rotation open · wish list + prototype locked')
+      + (wearing ? ` · ${wearing} wearing your artwork` : '')
+      + (failed ? ` · ${failed} stored but would not load` : '')
+      + (blank > 0 ? ` · ${blank} with none stored, capture again to give ${blank === 1 ? 'it' : 'them'} a label` : '');
 
   q('upgrade').hidden = p || EMPTY;
 
