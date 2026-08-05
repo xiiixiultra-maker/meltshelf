@@ -231,8 +231,20 @@ function applyGain(cv, gain) {
 export function stitchWrap(shots, opts = {}) {
   /* `hero` exists so the two arrangements can be MEASURED against each other
      on the same photographs rather than argued about. It is on in production. */
+  /* `heroU` is where in the wrap the first shot should land, 0 to 1.
+     NOT 0.5. The middle of the wrap is not the front of the jar, which was an
+     assumption I made and did not check. Measured by painting a 36 band wrap,
+     rendering each jar square on and reading the hue at the centre of the
+     silhouette, 11 samples, unanimous both times:
+
+         tall    0.514      the middle really is the front, near enough
+         sleeve  0.764      the middle is 95 degrees round the SIDE
+
+     So on the squat jar, centring the hero hid it. The caller passes the value
+     for the shape it is building; 0.5 remains the default only because a
+     caller that does not know its shape has nothing better to offer. */
   const { width = 4096, aspect = 7.194, match = true, deshade = true,
-          hero = true } = opts;
+          hero = true, heroU = 0.5 } = opts;
   if (!shots?.length) throw new Error('stitchWrap: no shots');
 
   const N = shots.length;
@@ -276,9 +288,11 @@ export function stitchWrap(shots, opts = {}) {
 
   // Start columns, hero centred, everything else following it round.
   const starts = new Array(N);
-  // Centred when the hero rule is on, at column zero when it is not, which is
-  // exactly what this did before.
-  starts[0] = hero ? Math.round(width / 2 - shares[0] / 2) : 0;
+  // The hero's CENTRE lands on heroU. Not the middle of the wrap: the column
+  // that ends up facing the camera when the jar is at rest.
+  starts[0] = hero
+    ? Math.round(((heroU % 1) + 1) % 1 * width - shares[0] / 2)
+    : 0;
   for (let i = 1; i < N; i++) {
     starts[i] = Math.round(starts[i - 1] + shares[i - 1]);
   }
@@ -437,6 +451,18 @@ export function stitchWrap(shots, opts = {}) {
  * renderer rather than to copy: modelling the tear itself would bake one
  * owner's particular rip into every jar the site ever draws.
  */
+/**
+ * Where the camera looks, per shape, as a fraction of the wrap.
+ *
+ * MEASURED, not derived, because the two jars build their label rings
+ * differently and only one of them is a plain cylinder. The sleeve jar winds
+ * its UV backwards (`u = 1 - a / 2pi`), which puts the facing column at 0.75;
+ * the tall jar's lands at 0.5. Confirmed by rendering a 36 band test wrap on
+ * each jar and reading the hue at the centre of the silhouette.
+ */
+export const FACING_U = { tall: 0.514, sleeve: 0.764 };
+export const facingU = (shape) => FACING_U[shape] ?? 0.5;
+
 export const WRAP_GEOM = {
   tall: {
     id: 'tall', H_TOTAL: 42.00, R: 25.00, seam: 23.575,

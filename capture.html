@@ -563,7 +563,7 @@ import { createSleeveJarModel, SLEEVE_DIM } from './src/createSleeveJarModel.js'
 import { makeTemplatePack, CONFIG } from './src/labelArtTemplate.js';
 import { AROMA, FLAVOUR, TERROIR, EXPERIENCE, ALL_AROMA } from './src/taxonomy.js';
 import { stitchWrap, splitJarWrap, splitPrintedWrap, fullAspect, printedAspect,
-         wrapGeom, bandAspect, maxCanvasWidth, TURNS } from './src/stitchWrap.js';
+         wrapGeom, bandAspect, maxCanvasWidth, facingU, TURNS } from './src/stitchWrap.js';
 import { db, profile, configured, SETUP_HELP } from './src/auth.js';
 import { WRAP } from './src/labelArtTemplate.js';
 import { converter, formatHex, differenceEuclidean } from 'culori';
@@ -1738,8 +1738,14 @@ function buildWrap() {
     // Both of these take the SHAPE now. They used to be the tall jar's numbers
     // whichever shape had been chosen, so a squat jar was unwrapped at the
     // wrong proportion and then cut at a height it does not have.
-    CAP.wrap = stitchWrap(CAP.outside,
-      { width: TARGET.w, aspect: fullAspect(CAP.shape) });
+    CAP.wrap = stitchWrap(CAP.outside, {
+      width: TARGET.w,
+      aspect: fullAspect(CAP.shape),
+      /* WHERE the first shot lands, so it is the side facing you when the jar
+         is at rest. Measured per shape: the middle of the wrap is the front of
+         the tall jar and 95 degrees round the side of the squat one. */
+      heroU: facingU(CAP.shape),
+    });
     CAP.bands = splitJarWrap(CAP.wrap, CAP.shape);
   }
   if (!CAP.wrap) return false;
