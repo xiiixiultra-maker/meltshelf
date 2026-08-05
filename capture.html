@@ -1046,6 +1046,26 @@ const mkc = (w, h) => Object.assign(document.createElement('canvas'), { width: w
  * straight off the screen would hand the unwrap a radius measured in the
  * wrong space, and every strip would be stretched by the crop factor.
  */
+/**
+ * The square the guide ring encloses, in sensor pixels, clamped to the frame.
+ *
+ * Both round faces want the same thing: whatever is inside the ring, square,
+ * and nothing outside it. Square because the face is a disc printed on a square
+ * texture, so a rect crop would squash the print into an oval.
+ */
+function squareFromGuide(v) {
+  const r = guideRectInFrame();
+  const side = Math.min(Math.max(r.w, r.h), v.videoWidth, v.videoHeight);
+  // Clamped, so a guide that overhangs the frame cannot read past its edge and
+  // come back with a black band down one side.
+  const cx = Math.min(Math.max(r.x + r.w / 2, side / 2), v.videoWidth - side / 2);
+  const cy = Math.min(Math.max(r.y + r.h / 2, side / 2), v.videoHeight - side / 2);
+  const c = mkc(Math.round(side), Math.round(side));
+  c.getContext('2d').drawImage(v, cx - side / 2, cy - side / 2, side, side,
+                               0, 0, c.width, c.height);
+  return c;
+}
+
 function guideRectInFrame() {
   const v = $('vfvid');
   const box = v.getBoundingClientRect();
@@ -1312,12 +1332,17 @@ function takeShot() {
     return;
   }
 
-  // ---- TOP: one square shot of the cap ----
+  /* ---- TOP: the cap, cropped to the RING, not to the sensor ----
+     This took the whole centred square of the frame and ignored the guide
+     completely, so whatever you lined the cap up inside, the shot came back
+     with everything around it: the reported white table, printed onto the lid
+     as part of the sticker. The label phase four lines up has always cropped
+     to its guide; this and the base never did.
+
+     Square, and taken from the guide's own size, because the sticker is a disc
+     on a square texture and a non-square crop would squash it. */
   if (CAP.phase === 'top') {
-    const side = Math.min(v.videoWidth, v.videoHeight);
-    const c = mkc(side, side);
-    c.getContext('2d').drawImage(v, (v.videoWidth - side) / 2, (v.videoHeight - side) / 2,
-      side, side, 0, 0, side, side);
+    const c = squareFromGuide(v);
     CAP.top = c;
     CAP.topSrc = 'photo';
     advance();
@@ -1325,12 +1350,9 @@ function takeShot() {
     return;
   }
 
-  // ---- BOTTOM: one shot of the base, kept as a square crop ----
+  // ---- BOTTOM: the base, cropped to the ring for the same reason ----
   if (CAP.phase === 'bottom') {
-    const side = Math.min(v.videoWidth, v.videoHeight);
-    const c = mkc(side, side);
-    c.getContext('2d').drawImage(v, (v.videoWidth - side) / 2, (v.videoHeight - side) / 2,
-      side, side, 0, 0, side, side);
+    const c = squareFromGuide(v);
     CAP.bottom = c;
     CAP.bottomSrc = 'photo';
     advance();
