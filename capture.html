@@ -426,7 +426,7 @@ td b{font-weight:500;color:var(--l1)}
       <button id="startBottom" hidden>Shoot the base</button>
       <button id="fileBottom" hidden>Base from a file</button>
       <button id="startInside" class="primary" hidden>Shoot the inside</button>
-      <button id="generate" class="primary" hidden>Generate the jar</button>
+      <button id="generate" class="primary">Generate the jar</button>
       <button id="resetSess" hidden>Start over</button>
     </div>
   </fieldset>
@@ -469,6 +469,8 @@ td b{font-weight:500;color:var(--l1)}
   </fieldset>
 
   <fieldset><legend>Render preview</legend>
+    <p id="prevState" class="warn">This is the stand-in jar. Nothing you have
+       photographed is on it yet.</p>
     <div id="preview"></div>
     <div class="row" style="margin-top:10px">
       <button id="details">Add details</button>
@@ -1094,7 +1096,39 @@ function paintSession() {
     : n < CAP.min ? 'Continue outside shots'
     : `Add a sharper shot (${n} of ${CAP.max})`;
   $('startInside').hidden = !done || !!CAP.inside;
-  $('generate').hidden = !(done && facesReady() && CAP.inside && S.colour);
+  /* NEVER HIDDEN, ONLY DISABLED, AND IT SAYS WHY.
+     This used to disappear until every precondition was met, so a session that
+     was one step short showed no Generate button at all and offered Save to my
+     shelf as the only green button on the screen. That reads as a finished
+     jar. Three separate reports of "my images do not stick, it just generates
+     a generic version" were this: the stand-in jar in the preview, the real
+     step invisible, and nothing anywhere saying what was missing. */
+  const gen = $('generate');
+  const missing = [];
+  if (!done) {
+    missing.push(CAP.route === 'artwork'
+      ? 'the label image'
+      : (CAP.min - n) + ' more outside shot' + (CAP.min - n === 1 ? '' : 's'));
+  }
+  if (!facesReady()) missing.push(!CAP.top ? 'the top' : 'the base');
+  if (!CAP.inside) missing.push('the inside shot');
+  else if (!S.colour) missing.push('a colour reading');
+
+  gen.disabled = missing.length > 0;
+  gen.textContent = missing.length
+    ? 'Need ' + missing.join(', ')
+    : 'Generate the jar';
+
+  /* And the preview says which jar it is showing, because a stand-in jar and a
+     finished one look equally finished if nothing tells you otherwise. */
+  const ps = $('prevState');
+  if (ps) {
+    ps.hidden = !!CAP.wrap;
+    ps.className = 'warn';
+    ps.textContent = 'This is the stand-in jar. Nothing you have photographed '
+      + 'is on it yet: press ' + (missing.length ? 'Generate once you have added '
+      + missing.join(', ') : 'Generate the jar') + '.';
+  }
   $('resetSess').hidden = !n;
 
   $('thumbs').innerHTML = Array.from({ length: CAP.max }, (_, i) => {
@@ -1819,6 +1853,7 @@ $('save').addEventListener('click', async () => {
   // Build the wrap now if generate was never pressed. Uploading nothing and
   // reporting success is how a jar ended up in the database with no face.
   if (!CAP.wrap && !buildWrap()) {
+    out.className = 'warn';
     out.textContent = CAP.wrapBlank
       ? 'The wrap came out blank on this device, so there is nothing to store. '
         + 'This is usually the browser refusing a canvas ' + TARGET.w
