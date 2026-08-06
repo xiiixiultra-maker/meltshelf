@@ -1878,17 +1878,25 @@ $('save').addEventListener('click', async () => {
   const name = ($('e-name').value || '').trim();
   if (!name) { out.textContent = 'Give the jar a name first.'; $('e-name').focus(); return; }
 
-  // Build the wrap now if generate was never pressed. Uploading nothing and
-  // reporting success is how a jar ended up in the database with no face.
-  if (!CAP.wrap && !buildWrap()) {
-    out.className = 'warn';
-    out.textContent = CAP.wrapBlank
-      ? 'The wrap came out blank on this device, so there is nothing to store. '
-        + 'This is usually the browser refusing a canvas ' + TARGET.w
-        + ' pixels wide. Try again in another browser, or on a desktop.'
+  /* BUILD IF WE CAN, SAVE EITHER WAY.
+     This used to REFUSE to save when the wrap could not be built, so a failed
+     generate cost every photograph in the session. That is protecting the
+     wrong thing. The label is derived and can be rebuilt any time; the
+     photographs can only be re-shot. */
+  const wrapOk = !!CAP.wrap || buildWrap();
+  const wrapProblem = wrapOk ? null
+    : CAP.wrapBlank
+      ? 'the wrap came out blank on this device, usually the browser refusing '
+        + 'a canvas ' + TARGET.w + ' pixels wide'
       : CAP.route === 'artwork'
-      ? 'No label loaded yet, so there is nothing to put on the jar.'
-      : 'Not enough outside shots yet: ' + CAP.outside.length + ' of ' + CAP.min + '.';
+        ? 'no label image was loaded'
+        : 'only ' + CAP.outside.length + ' of ' + CAP.min + ' outside shots';
+
+  const anyShots = CAP.outside.length || CAP.top || CAP.bottom || CAP.inside
+                   || CAP.art.img;
+  if (!wrapOk && !anyShots) {
+    out.className = 'warn';
+    out.textContent = 'Nothing photographed yet, so there is nothing to keep.';
     return;
   }
 
@@ -1949,11 +1957,26 @@ $('save').addEventListener('click', async () => {
 
     // ---- 2. the artwork, keyed by entry id ----
     out.textContent = 'Saved. Storing the artwork.';
+    /* THE SOURCE PHOTOGRAPHS, kept whatever happens to the label. Everything
+       else here is derived from them and can be rebuilt; these can only be
+       re-shot. Under src/ so a regenerate can find them later and the derived
+       bands keep the flat names the renderer already looks for. */
+    const sources = [
+      ...CAP.outside.map((o, i) => ['src/outside-' + i, o.src]),
+      ...(CAP.art.img ? [['src/label', CAP.art.img]] : []),
+      ...(CAP.top ? [['src/top', CAP.top]] : []),
+      ...(CAP.bottom ? [['src/base', CAP.bottom]] : []),
+      ...(CAP.inside ? [['src/inside', CAP.inside]] : []),
+    ];
+
     const uploads = [
-      ['body',  CAP.bands ? CAP.bands.body  : CAP.wrap],
-      ['skirt', CAP.bands ? CAP.bands.skirt : null],
-      ['top',   CAP.top],
-      ['base',  CAP.bottom],
+      ...(wrapOk ? [
+        ['body',  CAP.bands ? CAP.bands.body  : CAP.wrap],
+        ['skirt', CAP.bands ? CAP.bands.skirt : null],
+        ['top',   CAP.top],
+        ['base',  CAP.bottom],
+      ] : []),
+      ...sources,
     ];
     const parts = [];
     for (const [part, canvas] of uploads) {
@@ -1966,25 +1989,43 @@ $('save').addEventListener('click', async () => {
       if (upErr) { console.warn('[meltshelf] upload failed', part, upErr); continue; }
       parts.push(part);
     }
+    /* Bands are what the RENDERER hunts for; src/... is the archive. Kept
+       apart, or a jar would claim a label that is actually a photograph of a
+       jar and the shelf would go looking for it. */
+    const bands = parts.filter((n) => !n.startsWith('src/'));
+    const kept = parts.filter((n) => n.startsWith('src/'));
 
     // ---- 3. record what actually landed ----
     // Which bands exist varies by route, and a renderer that has to probe
     // storage to find out makes a 404 per missing band on every page load.
-    if (parts.length) {
-      const { error: updErr } = await c.from('entries')
-        .update({ art_parts: parts }).eq('id', row.id);
-      if (updErr) console.warn('[meltshelf] art_parts not recorded', updErr);
+    // spec is jsonb, so the archive needs no migration to be recorded.
+    const patch = {};
+    if (bands.length) patch.art_parts = bands;
+    if (kept.length) patch.spec = { ...spec, src: kept };
+    if (Object.keys(patch).length) {
+      const { error: updErr } = await c.from('entries').update(patch).eq('id', row.id);
+      if (updErr) console.warn('[meltshelf] could not record what was stored', updErr);
     }
 
-    if (!parts.length) {
-      // The row exists but the jar has no face. Say so plainly rather than
-      // reporting a save that will render as the generic template.
-      out.innerHTML = 'Saved as <b>' + escText(name) + '</b>, but NO artwork '
-        + 'reached storage, so it will draw as a blank jar. The console has '
-        + 'the reason. <a href="./app.html" style="color:var(--green)">Open your shelf</a>';
+    if (!bands.length) {
+      /* The jar draws blank and that is worth saying. But the photographs are
+         safe, and that is the part that decides whether this costs a re-render
+         or another session with the jar and the camera. */
+      out.className = 'warn';
+      out.innerHTML = 'Saved as <b>' + escText(name) + '</b>. '
+        + (kept.length
+            ? '<b style="color:var(--green)">Your ' + kept.length + ' photograph'
+              + (kept.length === 1 ? ' is' : 's are') + ' stored</b>, so this jar '
+              + 'never has to be shot again. '
+            : 'No photographs reached storage either. ')
+        + 'The label was not built'
+        + (wrapProblem ? ': ' + wrapProblem : '') + ', so it draws blank for now. '
+        + '<a href="./app.html" style="color:var(--green)">Open your shelf</a>';
     } else {
       out.innerHTML = 'Saved to your shelf as <b style="color:var(--green)">'
-        + escText(name) + '</b>. Artwork stored: ' + parts.join(', ') + '. '
+        + escText(name) + '</b>. Artwork stored: ' + bands.join(', ') + '. '
+        + kept.length + ' source photograph' + (kept.length === 1 ? '' : 's')
+        + ' kept, so it never has to be shot again. '
         + 'Shape ' + (CAP.shape || 'tall') + '. '
         + 'It is private until you list it. '
         + '<a href="./app.html" style="color:var(--green)">Open your shelf</a>';
